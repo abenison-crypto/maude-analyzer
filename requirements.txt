@@ -1,0 +1,42 @@
+# MAUDE Database Analyzer - Python Dependencies
+# Python 3.9+ required (3.11+ recommended)
+
+# Core
+duckdb>=1.0.0
+pandas>=2.1.0
+numpy>=1.26.0
+
+# Web framework
+streamlit>=1.32.0
+
+# Visualization
+plotly>=5.18.0
+
+# HTTP client
+requests>=2.31.0
+httpx>=0.26.0
+
+# Data processing (optional, for faster processing)
+polars>=0.20.0
+
+# Export
+openpyxl>=3.1.0
+xlsxwriter>=3.1.0
+
+# Scheduling
+schedule>=1.2.0
+
+# Utilities
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+tenacity>=8.2.0
+
+# Development
+pytest>=8.0.0
+pytest-cov>=4.1.0
+black>=24.1.0
+ruff>=0.2.0
+
+# Optional: NLP (uncomment when needed)
+# nltk>=3.8.0
+# spacy>=3.7.0

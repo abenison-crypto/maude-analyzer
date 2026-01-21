@@ -1,0 +1,40 @@
+raw_name,clean_name,parent_company,is_scs_manufacturer
+ABBOTT LABORATORIES,Abbott,Abbott,True
+ABBOTT,Abbott,Abbott,True
+ABBOTT MEDICAL,Abbott,Abbott,True
+ABBOTT NEUROMODULATION,Abbott,Abbott,True
+ST. JUDE MEDICAL,Abbott,Abbott,True
+ST JUDE MEDICAL,Abbott,Abbott,True
+"ST. JUDE MEDICAL, INC.",Abbott,Abbott,True
+ST JUDE MEDICAL INC,Abbott,Abbott,True
+ST. JUDE NEUROMODULATION,Abbott,Abbott,True
+MEDTRONIC,Medtronic,Medtronic,True
+"MEDTRONIC, INC.",Medtronic,Medtronic,True
+MEDTRONIC INC,Medtronic,Medtronic,True
+MEDTRONIC INC.,Medtronic,Medtronic,True
+MEDTRONIC NEUROMODULATION,Medtronic,Medtronic,True
+MEDTRONIC SOFAMOR DANEK,Medtronic,Medtronic,True
+MEDTRONIC SPINE LLC,Medtronic,Medtronic,True
+BOSTON SCIENTIFIC,Boston Scientific,Boston Scientific,True
+BOSTON SCIENTIFIC CORPORATION,Boston Scientific,Boston Scientific,True
+BOSTON SCIENTIFIC CORP,Boston Scientific,Boston Scientific,True
+BOSTON SCIENTIFIC CORP.,Boston Scientific,Boston Scientific,True
+BOSTON SCIENTIFIC NEUROMODULATION,Boston Scientific,Boston Scientific,True
+BOSTON SCIENTIFIC NEUROMODULATION CORP,Boston Scientific,Boston Scientific,True
+ADVANCED NEUROMODULATION SYSTEMS,Boston Scientific,Boston Scientific,True
+"ADVANCED NEUROMODULATION SYSTEMS, INC.",Boston Scientific,Boston Scientific,True
+ANS,Boston Scientific,Boston Scientific,True
+NEVRO,Nevro,Nevro,True
+NEVRO CORP,Nevro,Nevro,True
+NEVRO CORP.,Nevro,Nevro,True
+NEVRO CORPORATION,Nevro,Nevro,True
+STIMWAVE,Stimwave,Stimwave,True
+STIMWAVE TECHNOLOGIES,Stimwave,Stimwave,True
+STIMWAVE TECHNOLOGIES INC,Stimwave,Stimwave,True
+STIMWAVE TECHNOLOGIES INCORPORATED,Stimwave,Stimwave,True
+NALU,Nalu Medical,Nalu Medical,True
+NALU MEDICAL,Nalu Medical,Nalu Medical,True
+"NALU MEDICAL, INC.",Nalu Medical,Nalu Medical,True
+SALUDA,Saluda Medical,Saluda Medical,True
+SALUDA MEDICAL,Saluda Medical,Saluda Medical,True
+SALUDA MEDICAL PTY LTD,Saluda Medical,Saluda Medical,True

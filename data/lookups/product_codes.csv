@@ -1,0 +1,7 @@
+product_code,device_name,device_class,medical_specialty,definition
+GZB,"Stimulator, Spinal-cord, Totally Implanted For Pain Relief",III,Neurology,"A totally implanted spinal cord stimulator for pain relief"
+LGW,"Stimulator, Spinal-cord, Totally Implanted For Pain Relief",III,Neurology,"An older classification for spinal cord stimulators"
+PMP,"Stimulator, Electrical, Implanted, For Pain Relief",III,Neurology,"DRG and other implanted electrical stimulators for pain"
+GZF,"Electrode, Spinal Cord Stimulator",II,Neurology,"Electrodes/leads for spinal cord stimulation systems"
+GZD,"Stimulator, Cerebellar",III,Neurology,"Cerebellar stimulation devices"
+GZE,"Stimulator, Transcranial",III,Neurology,"Transcranial stimulation devices"
