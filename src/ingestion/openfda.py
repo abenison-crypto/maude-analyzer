@@ -287,6 +287,17 @@ class OpenFDAClient:
         date_received = self._parse_date(openfda_record.get("date_received"))
         date_of_event = self._parse_date(openfda_record.get("date_of_event"))
 
+        # Map event type from openFDA format to MAUDE codes
+        event_type_map = {
+            "Injury": "IN",
+            "Malfunction": "M",
+            "Death": "D",
+            "Other": "O",
+            "No answer provided": "O",
+        }
+        raw_event_type = openfda_record.get("event_type", "")
+        event_type = event_type_map.get(raw_event_type, raw_event_type)
+
         # Build master record
         master_record = {
             "mdr_report_key": openfda_record.get("mdr_report_key"),
@@ -296,7 +307,7 @@ class OpenFDAClient:
             "date_of_event": date_of_event,
             "manufacturer_name": device.get("manufacturer_d_name"),
             "product_code": device.get("device_report_product_code"),
-            "event_type": openfda_record.get("event_type"),
+            "event_type": event_type,
             "type_of_report": openfda_record.get("type_of_report", [None])[0],
             "product_problem_flag": openfda_record.get("product_problem_flag"),
             "adverse_event_flag": openfda_record.get("adverse_event_flag"),
