@@ -147,16 +147,18 @@ class OpenFDAClient:
         result = OpenFDAResult()
 
         # Build search query
+        # Note: openFDA uses space as AND, and quotes for exact matches
         search_parts = []
 
         if product_codes:
-            codes_query = "+".join([f'device.device_report_product_code:"{c}"' for c in product_codes])
+            # Use OR for multiple product codes
+            codes_query = " OR ".join([f'device.device_report_product_code:{c}' for c in product_codes])
             if len(product_codes) > 1:
                 codes_query = f"({codes_query})"
             search_parts.append(codes_query)
 
         if manufacturers:
-            mfr_query = "+".join([f'device.manufacturer_d_name:"{m}"' for m in manufacturers])
+            mfr_query = " OR ".join([f'device.manufacturer_d_name:"{m}"' for m in manufacturers])
             if len(manufacturers) > 1:
                 mfr_query = f"({mfr_query})"
             search_parts.append(mfr_query)
@@ -164,12 +166,12 @@ class OpenFDAClient:
         if date_received_start or date_received_end:
             start_str = date_received_start.strftime("%Y%m%d") if date_received_start else "*"
             end_str = date_received_end.strftime("%Y%m%d") if date_received_end else "*"
-            search_parts.append(f"date_received:[{start_str}+TO+{end_str}]")
+            search_parts.append(f"date_received:[{start_str} TO {end_str}]")
 
         if event_type:
-            search_parts.append(f'event_type:"{event_type}"')
+            search_parts.append(f'event_type:{event_type}')
 
-        search_query = "+AND+".join(search_parts) if search_parts else None
+        search_query = " AND ".join(search_parts) if search_parts else None
 
         try:
             # First request to get total count

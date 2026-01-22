@@ -14,6 +14,9 @@ from config.logging_config import get_logger
 
 logger = get_logger("parser")
 
+# Increase CSV field size limit for large narrative text fields
+csv.field_size_limit(sys.maxsize)
+
 
 # Column definitions for each file type
 # These match the FDA MAUDE file specifications
