@@ -174,6 +174,41 @@ MAUDE_FILE_PATTERNS = {
     "problem": r"foidevproblem.*\.txt",
 }
 
+# FDA Weekly Incremental File Patterns
+# ADD files: New records added during the week
+# CHANGE files: Updates/corrections to existing records
+# Released on Thursdays
+MAUDE_INCREMENTAL_PATTERNS = {
+    "master": {
+        "add": r"mdrfoiAdd.*\.txt",
+        "change": r"mdrfoiChange.*\.txt",
+    },
+    "device": {
+        "add": r"foidevAdd.*\.txt",
+        "change": None,  # Device doesn't have change files
+    },
+    "patient": {
+        "add": r"patientAdd.*\.txt",
+        "change": r"patientChange.*\.txt",
+    },
+    "text": {
+        "add": r"foitextAdd.*\.txt",
+        "change": None,  # Text doesn't have change files
+    },
+    "problem": {
+        "add": None,
+        "change": None,
+    },
+}
+
+# FDA File Categories
+FILE_CATEGORIES = {
+    "current": "Current year files, updated weekly (e.g., mdrfoi.zip)",
+    "add": "Weekly addition files with new records (e.g., mdrfoiAdd.zip)",
+    "change": "Weekly change files with updates to existing records (e.g., mdrfoiChange.zip)",
+    "annual": "Annual archive files with historical data (e.g., mdrfoithru2024.zip)",
+}
+
 # =============================================================================
 # Date Formats
 # =============================================================================

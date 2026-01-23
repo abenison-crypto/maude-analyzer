@@ -1,4 +1,22 @@
-"""openFDA API client for fetching recent MAUDE data."""
+"""openFDA API client for querying MAUDE data.
+
+IMPORTANT: DO NOT use this module for bulk data ingestion.
+
+The openFDA API returns partial data (~20-25 fields) compared to
+FDA download files (86+ fields). Missing fields include:
+- Complete manufacturer contact info
+- Distributor information
+- Phone/address details
+- Full reporter details
+
+Use this module ONLY for:
+- Real-time alerts and monitoring
+- Quick count queries
+- Ad-hoc lookups
+- Searching for specific records
+
+For data ingestion, use FDA download files via the download.py module.
+"""
 
 import time
 import requests
@@ -269,12 +287,33 @@ class OpenFDAClient:
         """
         Transform an openFDA record to MAUDE database format.
 
+        .. deprecated::
+            This method is intended for data ingestion, which is now deprecated.
+            openFDA API returns only ~20-25 fields vs 86+ in FDA download files.
+            Use FDA download files for data ingestion to get complete records.
+
+            Missing fields include:
+            - manufacturer_contact_* (address, phone details)
+            - manufacturer_g1_* (global manufacturer info)
+            - distributor_* (distributor information)
+            - Full reporter details
+            - device_date_of_manufacture
+            - And many more...
+
         Args:
             openfda_record: Record from openFDA API.
 
         Returns:
-            Record in MAUDE database format.
+            Record in MAUDE database format (PARTIAL - many fields will be null).
         """
+        import warnings
+        warnings.warn(
+            "transform_to_maude_format() creates partial records. openFDA API "
+            "returns ~20-25 fields vs 86+ in FDA download files. Use FDA "
+            "download files for complete data ingestion.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         # Extract device info (take first device if multiple)
         devices = openfda_record.get("device", [])
         device = devices[0] if devices else {}

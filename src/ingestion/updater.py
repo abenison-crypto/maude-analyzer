@@ -246,6 +246,14 @@ class DataUpdater:
         """
         Fetch and load recent data from openFDA API.
 
+        .. deprecated::
+            This method is DEPRECATED. The openFDA API returns partial data
+            (~20-25 fields) compared to FDA download files (86+ fields).
+            Mixing API data with download data creates inconsistent records.
+
+            Use weekly FDA file downloads instead for data ingestion.
+            Keep API for: real-time alerts, quick counts, ad-hoc queries.
+
         Args:
             days: Number of days back to fetch.
             max_records: Maximum records to fetch.
@@ -253,6 +261,14 @@ class DataUpdater:
         Returns:
             UpdateStatus with results.
         """
+        import warnings
+        warnings.warn(
+            "update_from_openfda() is deprecated. openFDA API returns partial data "
+            "(~20-25 fields vs 86+ in download files). Use FDA file downloads for "
+            "data ingestion. Keep API for alerts and ad-hoc queries only.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         status = UpdateStatus(
             source=UpdateSource.OPENFDA_API,
             started_at=datetime.now(),
@@ -486,16 +502,20 @@ class DataUpdater:
         self,
         download_new: bool = True,
         load_new_files: bool = True,
-        fetch_from_api: bool = True,
+        fetch_from_api: bool = False,  # Changed default to False - API deprecated
         api_days: int = 30,
     ) -> Dict[str, UpdateStatus]:
         """
         Run a full update from all sources.
 
+        Note: API fetching is disabled by default. The openFDA API returns
+        partial data (~20-25 fields vs 86+ fields in download files).
+        Use FDA file downloads for complete, authoritative data.
+
         Args:
             download_new: Download new FDA files.
             load_new_files: Load new downloaded files.
-            fetch_from_api: Fetch recent data from openFDA.
+            fetch_from_api: Fetch recent data from openFDA (DEPRECATED, default False).
             api_days: Days of data to fetch from API.
 
         Returns:
@@ -512,6 +532,10 @@ class DataUpdater:
             results["fda_files"] = self.load_new_files()
 
         if fetch_from_api:
+            logger.warning(
+                "API fetching is deprecated. openFDA returns partial data. "
+                "Consider using FDA file downloads only."
+            )
             logger.info("Fetching from openFDA API...")
             results["openfda"] = self.update_from_openfda(days=api_days)
 
@@ -527,22 +551,36 @@ def get_update_status() -> DataStatus:
 def run_incremental_update(
     api_only: bool = False,
     days: int = 30,
+    include_api: bool = False,
 ) -> Dict[str, UpdateStatus]:
     """
     Run an incremental update.
 
+    Recommended: Use FDA file downloads only (include_api=False).
+    The openFDA API returns partial data (~20-25 fields vs 86+ in files).
+
     Args:
-        api_only: Only fetch from API, don't download files.
+        api_only: Only fetch from API, don't download files (DEPRECATED).
         days: Days of API data to fetch.
+        include_api: Whether to also fetch from API (default False, deprecated).
 
     Returns:
         Update results.
     """
+    if api_only:
+        import warnings
+        warnings.warn(
+            "api_only mode is deprecated. openFDA API returns partial data. "
+            "Use FDA file downloads for complete data.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+
     updater = DataUpdater()
     return updater.run_full_update(
         download_new=not api_only,
         load_new_files=not api_only,
-        fetch_from_api=True,
+        fetch_from_api=include_api or api_only,
         api_days=days,
     )
 
