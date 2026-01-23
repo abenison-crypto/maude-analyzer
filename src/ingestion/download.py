@@ -41,35 +41,64 @@ FDA_DOWNLOAD_BASE = "https://www.accessdata.fda.gov/MAUDE/ftparea/"
 # Generate year ranges for annual files
 DEVICE_YEARS = list(range(1998, 2026))  # 1998-2025
 TEXT_YEARS = list(range(1996, 2026))    # 1996-2025
+ASR_YEARS = list(range(1999, 2020))     # 1999-2019 (ASR reports)
+DEN_YEARS = list(range(84, 98))          # 1984-1997 (DEN legacy - 2-digit years)
 
 KNOWN_FILES = {
     "master": [
-        # Historical through 2024 (all records before 2025)
-        "mdrfoithru2024.zip",
-        # Current year (2025) - updated weekly
+        # Historical through 2025 (all records before 2026)
+        "mdrfoithru2025.zip",
+        # Current year (2026) - updated weekly
         "mdrfoi.zip",
     ],
     "device": [
-        # Historical through 2024
-        "foidevthru2024.zip",
-        # Current year
+        # Pre-1998 historical device data
+        "foidevthru1997.zip",
+        # Historical device data is stored in ANNUAL files (1998-2019)
+        *[f"foidev{year}.zip" for year in range(1998, 2020)],
+        # Recent years (2020-2025) also have annual files
+        *[f"device{year}.zip" for year in range(2020, 2026)],
+        # Current year (2026) - updated weekly
         "foidev.zip",
     ],
     "patient": [
-        # Historical through 2024
-        "patientthru2024.zip",
+        # Historical through 2025
+        "patientthru2025.zip",
         # Current year
         "patient.zip",
     ],
     "text": [
-        # Historical through 2024
-        "foitextthru2024.zip",
+        # Pre-1996 historical text data
+        "foitextthru1995.zip",
+        # Annual text files (1996-2025)
+        *[f"foitext{year}.zip" for year in TEXT_YEARS],
         # Current year
         "foitext.zip",
     ],
     "problem": [
         # Device problem codes (all years in one file)
         "foidevproblem.zip",
+    ],
+    "problem_lookup": [
+        # Device problem code descriptions lookup
+        "deviceproblemcodes.zip",
+    ],
+    "patient_problem": [
+        # Patient problem data files
+        "patientproblemdata.zip",  # Patient problem definitions
+        "patientproblemcode.zip",  # Patient problem mappings (21M records)
+    ],
+    "asr": [
+        # Alternative Summary Reports (1999-2019)
+        *[f"ASR_{year}.zip" for year in ASR_YEARS],
+        # ASR Patient Problem Codes
+        "ASR_PPC.zip",
+    ],
+    "den": [
+        # Device Experience Network legacy files (1984-1997)
+        *[f"mdr{year}.zip" for year in DEN_YEARS],
+        # Manufacturer disclaimers
+        "disclaim.zip",
     ],
 }
 
@@ -84,7 +113,7 @@ INCREMENTAL_FILES = {
     },
     "device": {
         "add": ["foidevAdd.zip"],
-        "change": [],  # Device doesn't have change files
+        "change": ["devicechange.zip"],  # Weekly device updates
     },
     "patient": {
         "add": ["patientAdd.zip"],
@@ -92,9 +121,25 @@ INCREMENTAL_FILES = {
     },
     "text": {
         "add": ["foitextAdd.zip"],
-        "change": [],  # Text doesn't have change files
+        "change": ["foitextchange.zip"],  # Weekly text updates
     },
     "problem": {
+        "add": [],
+        "change": [],
+    },
+    "problem_lookup": {
+        "add": [],
+        "change": [],
+    },
+    "patient_problem": {
+        "add": [],
+        "change": [],
+    },
+    "asr": {
+        "add": [],
+        "change": [],
+    },
+    "den": {
         "add": [],
         "change": [],
     },
@@ -103,15 +148,33 @@ INCREMENTAL_FILES = {
 # Extended file list including annual files (for full historical load)
 KNOWN_FILES_EXTENDED = {
     "master": KNOWN_FILES["master"].copy(),
-    "device": KNOWN_FILES["device"] + [f"foidev{year}.zip" for year in DEVICE_YEARS],
+    "device": KNOWN_FILES["device"].copy(),  # Already includes all annual files
     "patient": KNOWN_FILES["patient"].copy(),
-    "text": KNOWN_FILES["text"] + [f"foitext{year}.zip" for year in TEXT_YEARS],
+    "text": KNOWN_FILES["text"].copy(),  # Already includes all annual files
     "problem": KNOWN_FILES["problem"].copy(),
+    "problem_lookup": KNOWN_FILES["problem_lookup"].copy(),
+    "patient_problem": KNOWN_FILES["patient_problem"].copy(),
+    "asr": KNOWN_FILES["asr"].copy(),
+    "den": KNOWN_FILES["den"].copy(),
 }
 
-# Lookup files (problem code descriptions)
+# Lookup files (problem code descriptions and other lookups)
 LOOKUP_FILES = {
     "problem_codes": "deviceproblemcodes.txt",
+    "patient_problem_data": "patientproblemdata.txt",
+}
+
+# File type to table mapping for data files
+FILE_TYPE_TO_TABLE = {
+    "master": "master_events",
+    "device": "devices",
+    "patient": "patients",
+    "text": "mdr_text",
+    "problem": "device_problems",
+    "problem_lookup": "problem_codes",
+    "patient_problem": "patient_problems",
+    "asr": "asr_reports",
+    "den": "den_reports",
 }
 
 
@@ -541,20 +604,35 @@ class MAUDEDownloader:
             "patient": [],
             "text": [],
             "problem": [],
+            "problem_lookup": [],
+            "patient_problem": [],
+            "asr": [],
+            "den": [],
         }
 
         for filepath in self.output_dir.glob("*.txt"):
             filename = filepath.name.lower()
-            if "mdrfoi" in filename:
+            if "mdrfoi" in filename and "problem" not in filename:
                 existing["master"].append(filepath.name)
-            elif "foidev" in filename and "problem" not in filename:
+            elif ("foidev" in filename or filename.startswith("device")) and "problem" not in filename:
                 existing["device"].append(filepath.name)
-            elif filename.startswith("patient"):
+            elif filename.startswith("patient") and "problem" not in filename:
                 existing["patient"].append(filepath.name)
             elif "foitext" in filename:
                 existing["text"].append(filepath.name)
-            elif "problem" in filename:
+            elif filename == "deviceproblemcodes.txt":
+                existing["problem_lookup"].append(filepath.name)
+            elif "patientproblem" in filename:
+                existing["patient_problem"].append(filepath.name)
+            elif "foidevproblem" in filename or filename == "foidevproblem.txt":
                 existing["problem"].append(filepath.name)
+            elif filename.startswith("asr"):
+                existing["asr"].append(filepath.name)
+            elif filename.startswith("mdr") and filename[3:5].isdigit() and len(filename) < 12:
+                # DEN legacy files: mdr84.txt through mdr97.txt
+                existing["den"].append(filepath.name)
+            elif filename == "disclaim.txt":
+                existing["den"].append(filepath.name)
 
         return existing
 

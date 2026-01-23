@@ -140,6 +140,53 @@ PROBLEM_INSERT_COLUMNS = [
     "source_file",
 ]
 
+PATIENT_PROBLEM_INSERT_COLUMNS = [
+    "mdr_report_key", "patient_problem_code",
+    "source_file",
+]
+
+ASR_INSERT_COLUMNS = [
+    "report_id", "report_year",
+    "brand_name", "generic_name", "manufacturer_name",
+    "product_code", "device_class",
+    "report_count", "event_count",
+    "death_count", "injury_count", "malfunction_count",
+    "date_start", "date_end",
+    "exemption_number", "pma_pmn_number", "submission_type",
+    "summary_text",
+    "source_file",
+]
+
+ASR_PPC_INSERT_COLUMNS = [
+    "report_id", "patient_problem_code", "occurrence_count",
+    "source_file",
+]
+
+DEN_INSERT_COLUMNS = [
+    "mdr_report_key", "report_number", "report_source",
+    "date_received", "date_of_event", "date_report",
+    "brand_name", "generic_name",
+    "model_number", "catalog_number", "lot_number",
+    "device_operator",
+    "manufacturer_name", "manufacturer_city", "manufacturer_state", "manufacturer_country",
+    "event_type", "event_description", "patient_outcome",
+    "report_year",
+    "source_file",
+]
+
+DISCLAIMER_INSERT_COLUMNS = [
+    "manufacturer_name", "disclaimer_text", "effective_date",
+    "source_file",
+]
+
+PROBLEM_CODES_INSERT_COLUMNS = [
+    "problem_code", "description",
+]
+
+PATIENT_PROBLEM_CODES_INSERT_COLUMNS = [
+    "problem_code", "description",
+]
+
 # Map file type to insert columns
 INSERT_COLUMNS = {
     "master": MASTER_INSERT_COLUMNS,
@@ -147,6 +194,13 @@ INSERT_COLUMNS = {
     "patient": PATIENT_INSERT_COLUMNS,
     "text": TEXT_INSERT_COLUMNS,
     "problem": PROBLEM_INSERT_COLUMNS,
+    "patient_problem": PATIENT_PROBLEM_INSERT_COLUMNS,
+    "asr": ASR_INSERT_COLUMNS,
+    "asr_ppc": ASR_PPC_INSERT_COLUMNS,
+    "den": DEN_INSERT_COLUMNS,
+    "disclaimer": DISCLAIMER_INSERT_COLUMNS,
+    "problem_lookup": PROBLEM_CODES_INSERT_COLUMNS,
+    "patient_problem_data": PATIENT_PROBLEM_CODES_INSERT_COLUMNS,
 }
 
 
@@ -239,13 +293,28 @@ class MAUDELoader:
         try:
             batch = []
 
+            # Choose appropriate parser based on file type
+            if file_type in self.parser.CSV_FILE_TYPES:
+                records_gen = self.parser.parse_csv_file(
+                    filepath,
+                    file_type=file_type,
+                    map_to_db_columns=True,
+                )
+            elif file_type == "den":
+                records_gen = self.parser.parse_den_file(
+                    filepath,
+                    map_to_db_columns=True,
+                )
+            else:
+                records_gen = self.parser.parse_file_dynamic(
+                    filepath,
+                    schema=schema,
+                    file_type=file_type,
+                    map_to_db_columns=True,  # Get DB column names
+                )
+
             # Use dynamic parsing
-            for record in self.parser.parse_file_dynamic(
-                filepath,
-                schema=schema,
-                file_type=file_type,
-                map_to_db_columns=True,  # Get DB column names
-            ):
+            for record in records_gen:
                 result.records_processed += 1
 
                 try:
@@ -437,6 +506,13 @@ class MAUDELoader:
             "patient": "patients",
             "text": "mdr_text",
             "problem": "device_problems",
+            "patient_problem": "patient_problems",
+            "asr": "asr_reports",
+            "asr_ppc": "asr_patient_problems",
+            "den": "den_reports",
+            "disclaimer": "manufacturer_disclaimers",
+            "problem_lookup": "problem_codes",
+            "patient_problem_data": "patient_problem_codes",
         }
         return table_map.get(file_type, file_type)
 
@@ -463,7 +539,12 @@ class MAUDELoader:
             # IMPORTANT: Device must be loaded FIRST when using product code filtering
             # because only device files have PRODUCT_CODE. MDR keys from devices are
             # then used to filter master and related tables.
-            file_types = ["device", "master", "patient", "text", "problem"]
+            # New file types added: patient_problem, asr, asr_ppc, den, problem_lookup
+            file_types = [
+                "device", "master", "patient", "text", "problem",
+                "patient_problem", "asr", "asr_ppc", "den",
+                "problem_lookup", "patient_problem_data", "disclaimer"
+            ]
 
         all_results = {}
 
@@ -479,6 +560,27 @@ class MAUDELoader:
                 # Exclude problem files from device pattern
                 if file_type == "device":
                     files = [f for f in files if "problem" not in f.name.lower()]
+                    # Also include device{year}.txt files
+                    device_year_files = sorted(data_dir.glob("device*.txt"))
+                    device_year_files = [f for f in device_year_files if "problem" not in f.name.lower()]
+                    files = sorted(set(files + device_year_files))
+
+                # For ASR, exclude the asr_ppc files
+                if file_type == "asr":
+                    files = [f for f in files if "ppc" not in f.name.lower()]
+
+                # For DEN, only include 2-digit year files (mdr84-mdr97)
+                if file_type == "den":
+                    valid_files = []
+                    for f in files:
+                        name = f.name.lower()
+                        if name.startswith("mdr") and len(name) <= 9:
+                            year_part = name[3:5]
+                            if year_part.isdigit():
+                                year = int(year_part)
+                                if 84 <= year <= 97:
+                                    valid_files.append(f)
+                    files = valid_files
 
                 if not files:
                     logger.warning(f"No {file_type} files found in {data_dir}")
@@ -505,7 +607,14 @@ class MAUDELoader:
             "device": "foidev*.txt",
             "patient": "patient*.txt",
             "text": "foitext*.txt",
-            "problem": "*problem*.txt",
+            "problem": "foidevproblem*.txt",
+            "patient_problem": "patientproblemcode*.txt",
+            "asr": "asr_*.txt",
+            "asr_ppc": "asr_ppc*.txt",
+            "den": "mdr*.txt",  # Will be filtered for 84-97 in load logic
+            "disclaimer": "disclaim*.txt",
+            "problem_lookup": "deviceproblemcodes.txt",
+            "patient_problem_data": "patientproblemdata*.txt",
         }
         return patterns.get(file_type, "*.txt")
 
@@ -562,6 +671,74 @@ class MAUDELoader:
     def clear_loaded_keys(self) -> None:
         """Clear the set of loaded MDR keys."""
         self._loaded_mdr_keys.clear()
+
+    def populate_master_from_devices(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> tuple[int, int]:
+        """
+        Populate manufacturer_clean and product_code in master_events from devices table.
+
+        The FDA MAUDE data architecture stores manufacturer and product code information
+        in the device file (foidev.txt), NOT in the master file (mdrfoi.txt). The master
+        file's MANUFACTURER_NAME field is 99.99% empty by design.
+
+        This method should be called after loading both devices and master_events tables
+        to copy the manufacturer and product_code data from devices to master_events.
+
+        Args:
+            conn: Database connection.
+
+        Returns:
+            Tuple of (manufacturer_records_updated, product_code_records_updated).
+        """
+        logger.info("Populating master_events from devices table...")
+
+        # Check current state
+        before = conn.execute("""
+            SELECT
+                COUNT(manufacturer_clean) as has_mfr,
+                COUNT(product_code) as has_product
+            FROM master_events
+        """).fetchone()
+
+        # Update master_events with data from devices
+        # Uses FIRST() aggregation since one master event may have multiple devices
+        conn.execute("""
+            UPDATE master_events
+            SET
+                manufacturer_clean = COALESCE(master_events.manufacturer_clean, sub.manufacturer_d_clean),
+                product_code = COALESCE(master_events.product_code, sub.device_report_product_code)
+            FROM (
+                SELECT
+                    mdr_report_key,
+                    FIRST(manufacturer_d_clean) as manufacturer_d_clean,
+                    FIRST(device_report_product_code) as device_report_product_code
+                FROM devices
+                WHERE manufacturer_d_clean IS NOT NULL
+                   OR device_report_product_code IS NOT NULL
+                GROUP BY mdr_report_key
+            ) sub
+            WHERE master_events.mdr_report_key = sub.mdr_report_key
+              AND (master_events.manufacturer_clean IS NULL OR master_events.product_code IS NULL)
+        """)
+
+        # Check results
+        after = conn.execute("""
+            SELECT
+                COUNT(manufacturer_clean) as has_mfr,
+                COUNT(product_code) as has_product
+            FROM master_events
+        """).fetchone()
+
+        mfr_added = after[0] - before[0]
+        product_added = after[1] - before[1]
+
+        logger.info(
+            f"Populated master_events: {mfr_added:,} manufacturer records, "
+            f"{product_added:,} product_code records added"
+        )
+
+        return mfr_added, product_added
 
 
 def load_lookup_tables(conn: duckdb.DuckDBPyConnection, lookups_dir: Path) -> None:

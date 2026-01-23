@@ -1,4 +1,4 @@
-"""Parse FDA MAUDE data files."""
+"""Parse FDA MAUDE data files with dynamic schema detection."""
 
 import csv
 import re
@@ -11,6 +11,27 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.logging_config import get_logger
+from config.schema_registry import (
+    FDA_FILE_COLUMNS,
+    HEADERLESS_FILES,
+    get_fda_columns,
+    is_headerless_file,
+    get_expected_column_count,
+    validate_schema,
+    get_columns_for_count,
+    get_alternative_column_counts,
+    ASR_COLUMNS_FDA,
+    ASR_PPC_COLUMNS_FDA,
+    DEN_COLUMNS_FDA,
+    PATIENT_PROBLEM_COLUMNS_FDA,
+    PROBLEM_CODES_LOOKUP_COLUMNS_FDA,
+    DISCLAIMER_COLUMNS_FDA,
+)
+from config.column_mappings import (
+    COLUMN_MAPPINGS,
+    get_db_column_name,
+    map_record_columns,
+)
 
 logger = get_logger("parser")
 
@@ -18,126 +39,71 @@ logger = get_logger("parser")
 csv.field_size_limit(sys.maxsize)
 
 
-# Column definitions for each file type
-# These match the FDA MAUDE file specifications
-
+# Legacy column definitions for backward compatibility
+# These are the database column names (lowercase)
 MASTER_COLUMNS = [
-    "mdr_report_key",
-    "event_key",
-    "report_number",
-    "report_source_code",
-    "manufacturer_link_flag",
-    "number_devices_in_event",
-    "number_patients_in_event",
-    "date_received",
-    "date_report",
-    "date_of_event",
-    "reprocessed_flag",
-    "reporter_occupation_code",
-    "health_professional",
-    "initial_report_to_fda",
-    "distributor_name",
-    "distributor_address_1",
-    "distributor_address_2",
-    "distributor_city",
-    "distributor_state",
-    "distributor_zip",
-    "distributor_zip_ext",
-    "date_facility_aware",
-    "report_date",
-    "report_to_fda",
-    "date_report_to_fda",
-    "event_location",
-    "report_to_manufacturer",
-    "date_report_to_manufacturer",
-    "date_manufacturer_received",
-    "type_of_report",
-    "product_problem_flag",
-    "adverse_event_flag",
-    "single_use_flag",
-    "remedial_action",
-    "removal_correction_number",
-    "event_type",
-    "manufacturer_contact_name",
-    "manufacturer_contact_address_1",
-    "manufacturer_contact_address_2",
-    "manufacturer_contact_city",
-    "manufacturer_contact_state",
-    "manufacturer_contact_zip",
-    "manufacturer_contact_zip_ext",
-    "manufacturer_contact_country",
-    "manufacturer_contact_postal",
-    "manufacturer_contact_phone",
-    "manufacturer_contact_extension",
-    "manufacturer_contact_email",
-    "manufacturer_name",
-    "manufacturer_address_1",
-    "manufacturer_address_2",
-    "manufacturer_city",
-    "manufacturer_state",
-    "manufacturer_zip",
-    "manufacturer_zip_ext",
-    "manufacturer_country",
-    "manufacturer_postal",
-    "product_code",
-    "pma_pmn_number",
-    "exemption_number",
-    "summary_report_flag",
+    "mdr_report_key", "event_key", "report_number", "report_source_code",
+    "manufacturer_link_flag_old", "number_devices_in_event", "number_patients_in_event",
+    "date_received", "adverse_event_flag", "product_problem_flag",
+    "date_report", "date_of_event", "reprocessed_and_reused_flag",
+    "reporter_occupation_code", "health_professional", "initial_report_to_fda",
+    "date_facility_aware", "report_date", "report_to_fda", "date_report_to_fda",
+    "event_location", "date_report_to_manufacturer",
+    "manufacturer_contact_title", "manufacturer_contact_first_name",
+    "manufacturer_contact_last_name", "manufacturer_contact_address_1",
+    "manufacturer_contact_address_2", "manufacturer_contact_city",
+    "manufacturer_contact_state", "manufacturer_contact_zip",
+    "manufacturer_contact_zip_ext", "manufacturer_contact_country",
+    "manufacturer_contact_postal", "manufacturer_contact_phone",
+    "manufacturer_contact_extension", "manufacturer_contact_email",
+    "manufacturer_g1_name", "manufacturer_g1_street_1", "manufacturer_g1_street_2",
+    "manufacturer_g1_city", "manufacturer_g1_state", "manufacturer_g1_zip",
+    "manufacturer_g1_zip_ext", "manufacturer_g1_country", "manufacturer_g1_postal",
+    "date_manufacturer_received", "device_date_of_manufacture", "single_use_flag",
+    "remedial_action", "previous_use_code", "removal_correction_number",
+    "manufacturer_link_flag", "event_type", "distributor_name",
+    "distributor_address_1", "distributor_address_2", "distributor_city",
+    "distributor_state", "distributor_zip", "distributor_zip_ext",
+    "report_to_manufacturer", "type_of_report", "manufacturer_name",
+    "manufacturer_address_1", "manufacturer_address_2", "manufacturer_city",
+    "manufacturer_state", "manufacturer_zip", "manufacturer_zip_ext",
+    "manufacturer_country", "manufacturer_postal", "mfr_report_type",
+    "source_type", "date_added", "date_changed", "product_code",
+    "pma_pmn_number", "exemption_number", "summary_report_flag",
+    "reporter_state_code", "reporter_country_code", "noe_summarized",
+    "supplemental_dates_fda_received", "supplemental_dates_mfr_received",
+    "baseline_report_number", "schema_version",
 ]
 
 DEVICE_COLUMNS = [
-    "mdr_report_key",
-    "device_sequence_number",
-    "date_received",
-    "brand_name",
-    "generic_name",
-    "manufacturer_d_name",
-    "manufacturer_d_address_1",
-    "manufacturer_d_address_2",
-    "manufacturer_d_city",
-    "manufacturer_d_state",
-    "manufacturer_d_zip",
-    "manufacturer_d_zip_ext",
-    "manufacturer_d_country",
-    "manufacturer_d_postal",
-    "device_report_product_code",
-    "model_number",
-    "catalog_number",
-    "lot_number",
-    "other_id_number",
-    "device_operator",
-    "device_availability",
-    "device_evaluated_by_manufacturer",
-    "date_returned_to_manufacturer",
-    "device_age_text",
-    "combination_product_flag",
-    "implant_flag",
-    "date_removed_flag",
-    "expiration_date_of_device",
+    "mdr_report_key", "device_event_key", "implant_flag", "date_removed_flag",
+    "device_sequence_number", "date_received", "brand_name", "generic_name",
+    "manufacturer_d_name", "manufacturer_d_address_1", "manufacturer_d_address_2",
+    "manufacturer_d_city", "manufacturer_d_state", "manufacturer_d_zip",
+    "manufacturer_d_zip_ext", "manufacturer_d_country", "manufacturer_d_postal",
+    "expiration_date_of_device", "model_number", "catalog_number", "lot_number",
+    "other_id_number", "device_operator", "device_availability",
+    "date_returned_to_manufacturer", "device_report_product_code",
+    "device_age_text", "device_evaluated_by_manufacturer",
 ]
 
 PATIENT_COLUMNS = [
-    "mdr_report_key",
-    "patient_sequence_number",
-    "date_received",
-    "sequence_number_treatment",
-    "sequence_number_outcome",
+    "mdr_report_key", "patient_sequence_number", "date_received",
+    "sequence_number_treatment", "sequence_number_outcome",
+    "patient_age", "patient_sex", "patient_weight",
+    "patient_ethnicity", "patient_race",
 ]
 
 TEXT_COLUMNS = [
-    "mdr_report_key",
-    "text_type_code",
-    "patient_sequence_number",
-    "date_received",
-    "text_content",
+    "mdr_report_key", "mdr_text_key", "text_type_code",
+    "patient_sequence_number", "date_report", "text_content",
 ]
 
 PROBLEM_COLUMNS = [
-    "mdr_report_key",
-    "device_problem_code",
+    "mdr_report_key", "device_problem_code",
 ]
 
-# Map file type to columns
+# Map file type to database columns (lowercase)
 FILE_COLUMNS = {
     "master": MASTER_COLUMNS,
     "device": DEVICE_COLUMNS,
@@ -148,19 +114,39 @@ FILE_COLUMNS = {
 
 
 @dataclass
+class SchemaInfo:
+    """Information about detected file schema."""
+    columns: List[str]  # FDA column names (uppercase)
+    column_count: int
+    has_header: bool
+    file_type: str
+    is_valid: bool = True
+    validation_message: str = ""
+
+
+@dataclass
 class ParseResult:
     """Result of parsing a file."""
-
     filename: str
     file_type: str
     total_rows: int = 0
     parsed_rows: int = 0
     error_rows: int = 0
     errors: List[Tuple[int, str]] = field(default_factory=list)
+    schema_info: Optional[SchemaInfo] = None
 
 
 class MAUDEParser:
-    """Parser for FDA MAUDE pipe-delimited files."""
+    """Parser for FDA MAUDE files with dynamic schema detection.
+
+    Supports:
+    - Pipe-delimited files (most MAUDE files)
+    - CSV files (ASR reports)
+    - Various historical formats (DEN legacy 1984-1997)
+    """
+
+    # File types that use CSV format instead of pipe-delimited
+    CSV_FILE_TYPES = {"asr", "asr_ppc"}
 
     def __init__(self, encoding: str = "latin-1"):
         """
@@ -183,40 +169,50 @@ class MAUDEParser:
         """
         filename = filepath.name.lower()
 
-        if filename.startswith("mdrfoi") and "thru" not in filename:
+        # Handle historical files (thru{year}) and current files
+        if "mdrfoi" in filename and "problem" not in filename:
             return "master"
-        elif filename.startswith("foidev") and "problem" not in filename:
+        elif ("foidev" in filename or filename.startswith("device")) and "problem" not in filename:
             return "device"
-        elif filename.startswith("patient"):
+        elif filename.startswith("patient") and "problem" not in filename:
             return "patient"
-        elif filename.startswith("foitext"):
+        elif "foitext" in filename:
             return "text"
-        elif "problem" in filename:
+        elif filename == "foidevproblem.txt" or "foidevproblem" in filename:
             return "problem"
+        elif filename == "deviceproblemcodes.txt":
+            return "problem_lookup"
+        elif "patientproblemcode" in filename:
+            return "patient_problem"
+        elif "patientproblemdata" in filename:
+            return "patient_problem_data"
+        elif filename.startswith("asr_ppc") or filename == "asr_ppc.txt":
+            return "asr_ppc"
+        elif filename.startswith("asr"):
+            return "asr"
+        elif filename == "disclaim.txt":
+            return "disclaimer"
+        # DEN legacy files: mdr84.txt through mdr97.txt
+        elif filename.startswith("mdr") and len(filename) <= 9:
+            # Check if it's a 2-digit year format (mdr84.txt - mdr97.txt)
+            year_part = filename[3:5]
+            if year_part.isdigit():
+                year = int(year_part)
+                if 84 <= year <= 97:
+                    return "den"
 
         return None
 
-    def parse_file(
-        self,
-        filepath: Path,
-        file_type: Optional[str] = None,
-        limit: Optional[int] = None,
-        filter_product_codes: Optional[List[str]] = None,
-    ) -> Generator[Dict[str, Any], None, ParseResult]:
+    def detect_schema_from_header(self, filepath: Path, file_type: Optional[str] = None) -> SchemaInfo:
         """
-        Parse a MAUDE file and yield records.
+        Read the first line of a file and detect its column structure.
 
         Args:
             filepath: Path to the file.
-            file_type: Type of file (auto-detected if None).
-            limit: Maximum number of records to return.
-            filter_product_codes: Only return records matching these product codes.
-
-        Yields:
-            Dictionary for each parsed record.
+            file_type: Known file type (auto-detected if None).
 
         Returns:
-            ParseResult with statistics.
+            SchemaInfo with detected columns and metadata.
         """
         if file_type is None:
             file_type = self.detect_file_type(filepath)
@@ -224,45 +220,199 @@ class MAUDEParser:
         if file_type is None:
             raise ValueError(f"Could not detect file type for: {filepath}")
 
-        columns = FILE_COLUMNS.get(file_type)
-        if columns is None:
-            raise ValueError(f"Unknown file type: {file_type}")
+        # Check if this is a headerless file
+        if is_headerless_file(file_type):
+            fda_columns = get_fda_columns(file_type)
+            return SchemaInfo(
+                columns=fda_columns,
+                column_count=len(fda_columns),
+                has_header=False,
+                file_type=file_type,
+                is_valid=True,
+                validation_message="Using predefined columns (headerless file)",
+            )
+
+        # Read the first line to get header
+        try:
+            with open(filepath, "r", encoding=self.encoding, errors="replace") as f:
+                first_line = f.readline().strip()
+
+            # Split by pipe delimiter
+            header_parts = first_line.split("|")
+
+            # Check if this looks like a header row
+            if self._is_header_row(header_parts, file_type):
+                # Normalize column names (uppercase, strip)
+                columns = [col.strip().upper() for col in header_parts]
+                has_header = True
+            else:
+                # No header - use predefined columns based on detected column count
+                # This handles cases like master files with 84 vs 86 columns
+                detected_count = len(header_parts)
+                columns = get_columns_for_count(file_type, detected_count)
+                has_header = False
+                logger.warning(
+                    f"File {filepath.name} appears to have no header. "
+                    f"Using predefined columns for {file_type}."
+                )
+
+            # Validate schema
+            is_valid, message = validate_schema(file_type, columns)
+
+            return SchemaInfo(
+                columns=columns,
+                column_count=len(columns),
+                has_header=has_header,
+                file_type=file_type,
+                is_valid=is_valid,
+                validation_message=message,
+            )
+
+        except Exception as e:
+            logger.error(f"Error detecting schema for {filepath}: {e}")
+            # Fall back to predefined columns
+            fda_columns = get_fda_columns(file_type)
+            return SchemaInfo(
+                columns=fda_columns,
+                column_count=len(fda_columns),
+                has_header=True,  # Assume header exists
+                file_type=file_type,
+                is_valid=False,
+                validation_message=f"Error detecting schema: {e}",
+            )
+
+    def _is_header_row(self, parts: List[str], file_type: str) -> bool:
+        """
+        Determine if a row looks like a header row.
+
+        Args:
+            parts: List of values from first row.
+            file_type: Type of file.
+
+        Returns:
+            True if this appears to be a header row.
+        """
+        if not parts:
+            return False
+
+        # Get expected first column name
+        expected_columns = get_fda_columns(file_type)
+        if not expected_columns:
+            return False
+
+        first_expected = expected_columns[0].upper()
+        first_actual = parts[0].strip().upper()
+
+        # Check if first column matches expected
+        if first_actual == first_expected:
+            return True
+
+        # Check for common header patterns
+        # Headers typically:
+        # 1. Are all uppercase or mixed case text
+        # 2. Don't start with numbers (MDR_REPORT_KEY vs "12345678")
+        # 3. Contain underscores or text descriptions
+
+        # If first value looks like an MDR key (numeric), it's data not header
+        if parts[0].strip().isdigit():
+            return False
+
+        # If first value contains "KEY", "REPORT", etc., likely header
+        header_indicators = ["KEY", "REPORT", "DATE", "NAME", "CODE", "NUMBER", "FLAG"]
+        for indicator in header_indicators:
+            if indicator in first_actual:
+                return True
+
+        return False
+
+    def parse_file_dynamic(
+        self,
+        filepath: Path,
+        schema: Optional[SchemaInfo] = None,
+        file_type: Optional[str] = None,
+        limit: Optional[int] = None,
+        filter_product_codes: Optional[List[str]] = None,
+        map_to_db_columns: bool = True,
+    ) -> Generator[Dict[str, Any], None, ParseResult]:
+        """
+        Parse a MAUDE file using dynamic schema detection.
+
+        Args:
+            filepath: Path to the file.
+            schema: Pre-detected schema (detected if None).
+            file_type: Type of file (auto-detected if None).
+            limit: Maximum number of records to return.
+            filter_product_codes: Only return records matching these product codes.
+            map_to_db_columns: If True, map FDA columns to database columns.
+
+        Yields:
+            Dictionary for each parsed record.
+
+        Returns:
+            ParseResult with statistics.
+        """
+        # Auto-detect file type if needed
+        if file_type is None:
+            file_type = self.detect_file_type(filepath)
+
+        if file_type is None:
+            raise ValueError(f"Could not detect file type for: {filepath}")
+
+        # Detect schema if not provided
+        if schema is None:
+            schema = self.detect_schema_from_header(filepath, file_type)
 
         result = ParseResult(
             filename=filepath.name,
             file_type=file_type,
+            schema_info=schema,
         )
 
-        logger.info(f"Parsing {file_type} file: {filepath.name}")
+        logger.info(
+            f"Parsing {file_type} file: {filepath.name} "
+            f"({schema.column_count} columns, header={schema.has_header})"
+        )
+
+        if not schema.is_valid:
+            logger.warning(f"Schema validation: {schema.validation_message}")
+
+        # Get column mapping for this file type
+        column_mapping = COLUMN_MAPPINGS.get(file_type, {})
 
         # Determine which column to filter on
         filter_column = None
         if filter_product_codes:
             if file_type == "master":
-                filter_column = "product_code"
+                filter_column = "PRODUCT_CODE"
             elif file_type == "device":
-                filter_column = "device_report_product_code"
+                filter_column = "DEVICE_REPORT_PRODUCT_CODE"
 
         try:
             with open(filepath, "r", encoding=self.encoding, errors="replace") as f:
-                # Use csv reader with pipe delimiter
                 reader = csv.reader(f, delimiter="|", quotechar='"')
 
                 for line_num, row in enumerate(reader, 1):
                     result.total_rows += 1
 
                     # Skip header row if present
-                    if line_num == 1 and row and row[0].upper() == columns[0].upper():
+                    if line_num == 1 and schema.has_header:
                         continue
 
                     try:
-                        record = self._parse_row(row, columns, file_type)
+                        # Parse row using detected columns
+                        record = self._parse_row_dynamic(
+                            row, schema.columns, file_type
+                        )
 
                         # Apply product code filter
                         if filter_product_codes and filter_column:
                             product_code = record.get(filter_column, "")
                             if product_code not in filter_product_codes:
                                 continue
+
+                        # Map to database column names if requested
+                        if map_to_db_columns:
+                            record = map_record_columns(record, file_type, to_db=True)
 
                         result.parsed_rows += 1
                         yield record
@@ -273,7 +423,7 @@ class MAUDEParser:
 
                     except Exception as e:
                         result.error_rows += 1
-                        if len(result.errors) < 100:  # Limit stored errors
+                        if len(result.errors) < 100:
                             result.errors.append((line_num, str(e)))
 
         except Exception as e:
@@ -287,11 +437,252 @@ class MAUDEParser:
 
         return result
 
+    def _parse_row_dynamic(
+        self, row: List[str], columns: List[str], file_type: str
+    ) -> Dict[str, Any]:
+        """
+        Parse a single row into a dictionary using dynamic columns.
+
+        Args:
+            row: List of field values.
+            columns: List of column names (FDA format, uppercase).
+            file_type: Type of file being parsed.
+
+        Returns:
+            Dictionary with FDA column names as keys.
+        """
+        record = {}
+
+        # Handle rows with fewer or more columns than expected
+        for i, col_name in enumerate(columns):
+            if i < len(row):
+                value = row[i].strip() if row[i] else None
+                # Convert empty strings to None
+                record[col_name] = value if value else None
+            else:
+                record[col_name] = None
+
+        return record
+
+    def parse_csv_file(
+        self,
+        filepath: Path,
+        file_type: str,
+        limit: Optional[int] = None,
+        map_to_db_columns: bool = True,
+    ) -> Generator[Dict[str, Any], None, ParseResult]:
+        """
+        Parse a CSV format MAUDE file (used for ASR reports).
+
+        Args:
+            filepath: Path to the file.
+            file_type: Type of file (asr, asr_ppc).
+            limit: Maximum number of records to return.
+            map_to_db_columns: If True, map FDA columns to database columns.
+
+        Yields:
+            Dictionary for each parsed record.
+
+        Returns:
+            ParseResult with statistics.
+        """
+        result = ParseResult(
+            filename=filepath.name,
+            file_type=file_type,
+        )
+
+        # Get columns for this file type
+        columns = get_fda_columns(file_type)
+
+        logger.info(f"Parsing CSV file: {filepath.name} (type: {file_type})")
+
+        try:
+            with open(filepath, "r", encoding=self.encoding, errors="replace") as f:
+                # Use comma delimiter for CSV files
+                reader = csv.reader(f, delimiter=",", quotechar='"')
+
+                # First row is typically header
+                header_row = next(reader, None)
+                if header_row:
+                    # Use header from file if present, otherwise use predefined
+                    detected_columns = [col.strip().upper() for col in header_row]
+                    if len(detected_columns) == len(columns):
+                        columns = detected_columns
+                    result.total_rows += 1
+
+                for line_num, row in enumerate(reader, 2):
+                    result.total_rows += 1
+
+                    try:
+                        record = self._parse_row_dynamic(row, columns, file_type)
+
+                        # Map to database column names if requested
+                        if map_to_db_columns:
+                            record = map_record_columns(record, file_type, to_db=True)
+
+                        result.parsed_rows += 1
+                        yield record
+
+                        if limit and result.parsed_rows >= limit:
+                            break
+
+                    except Exception as e:
+                        result.error_rows += 1
+                        if len(result.errors) < 100:
+                            result.errors.append((line_num, str(e)))
+
+        except Exception as e:
+            logger.error(f"Error reading CSV file {filepath}: {e}")
+            raise
+
+        logger.info(
+            f"Parsed CSV {filepath.name}: {result.parsed_rows} records, "
+            f"{result.error_rows} errors"
+        )
+
+        return result
+
+    def parse_den_file(
+        self,
+        filepath: Path,
+        limit: Optional[int] = None,
+        map_to_db_columns: bool = True,
+    ) -> Generator[Dict[str, Any], None, ParseResult]:
+        """
+        Parse a DEN legacy file (1984-1997 format).
+
+        DEN files may have variable formats depending on the year.
+        This method attempts to handle the variations.
+
+        Args:
+            filepath: Path to the file.
+            limit: Maximum number of records to return.
+            map_to_db_columns: If True, map FDA columns to database columns.
+
+        Yields:
+            Dictionary for each parsed record.
+
+        Returns:
+            ParseResult with statistics.
+        """
+        result = ParseResult(
+            filename=filepath.name,
+            file_type="den",
+        )
+
+        # Extract year from filename (mdr84.txt -> 84 -> 1984)
+        filename = filepath.name.lower()
+        year_part = filename[3:5]
+        report_year = int(f"19{year_part}") if year_part.isdigit() else None
+
+        logger.info(f"Parsing DEN legacy file: {filepath.name} (year: {report_year})")
+
+        # Get DEN columns - may need adjustment based on actual file format
+        columns = DEN_COLUMNS_FDA.copy()
+
+        try:
+            with open(filepath, "r", encoding=self.encoding, errors="replace") as f:
+                # Try to detect delimiter (pipe or other)
+                first_line = f.readline()
+                f.seek(0)
+
+                if "|" in first_line:
+                    delimiter = "|"
+                elif "," in first_line and first_line.count(",") > 5:
+                    delimiter = ","
+                else:
+                    delimiter = "|"
+
+                reader = csv.reader(f, delimiter=delimiter, quotechar='"')
+
+                for line_num, row in enumerate(reader, 1):
+                    result.total_rows += 1
+
+                    # Skip header if present
+                    if line_num == 1:
+                        first_val = row[0].strip().upper() if row else ""
+                        if "KEY" in first_val or "REPORT" in first_val or "MDR" in first_val:
+                            continue
+
+                    try:
+                        record = {}
+                        # Handle variable column counts in legacy files
+                        for i, col_name in enumerate(columns):
+                            if i < len(row):
+                                value = row[i].strip() if row[i] else None
+                                record[col_name] = value if value else None
+                            else:
+                                record[col_name] = None
+
+                        # Add derived year field
+                        record["REPORT_YEAR"] = report_year
+
+                        # Map to database column names if requested
+                        if map_to_db_columns:
+                            record = map_record_columns(record, "den", to_db=True)
+
+                        result.parsed_rows += 1
+                        yield record
+
+                        if limit and result.parsed_rows >= limit:
+                            break
+
+                    except Exception as e:
+                        result.error_rows += 1
+                        if len(result.errors) < 100:
+                            result.errors.append((line_num, str(e)))
+
+        except Exception as e:
+            logger.error(f"Error reading DEN file {filepath}: {e}")
+            raise
+
+        logger.info(
+            f"Parsed DEN {filepath.name}: {result.parsed_rows} records, "
+            f"{result.error_rows} errors"
+        )
+
+        return result
+
+    # Legacy method for backward compatibility
+    def parse_file(
+        self,
+        filepath: Path,
+        file_type: Optional[str] = None,
+        limit: Optional[int] = None,
+        filter_product_codes: Optional[List[str]] = None,
+    ) -> Generator[Dict[str, Any], None, ParseResult]:
+        """
+        Parse a MAUDE file and yield records (legacy interface).
+
+        This method uses the new dynamic parsing but returns results
+        in the legacy format (database column names).
+
+        Args:
+            filepath: Path to the file.
+            file_type: Type of file (auto-detected if None).
+            limit: Maximum number of records to return.
+            filter_product_codes: Only return records matching these product codes.
+
+        Yields:
+            Dictionary for each parsed record.
+
+        Returns:
+            ParseResult with statistics.
+        """
+        # Use the new dynamic parser with column mapping
+        return self.parse_file_dynamic(
+            filepath=filepath,
+            file_type=file_type,
+            limit=limit,
+            filter_product_codes=filter_product_codes,
+            map_to_db_columns=True,
+        )
+
     def _parse_row(
         self, row: List[str], columns: List[str], file_type: str
     ) -> Dict[str, Any]:
         """
-        Parse a single row into a dictionary.
+        Parse a single row into a dictionary (legacy method).
 
         Args:
             row: List of field values.
@@ -303,11 +694,9 @@ class MAUDEParser:
         """
         record = {}
 
-        # Handle rows with fewer or more columns than expected
         for i, col_name in enumerate(columns):
             if i < len(row):
                 value = row[i].strip() if row[i] else None
-                # Convert empty strings to None
                 record[col_name] = value if value else None
             else:
                 record[col_name] = None
@@ -325,6 +714,14 @@ class MAUDEParser:
             Number of records (lines minus header).
         """
         count = 0
+        has_header = True
+
+        # Detect if file has header
+        file_type = self.detect_file_type(filepath)
+        if file_type:
+            schema = self.detect_schema_from_header(filepath, file_type)
+            has_header = schema.has_header
+
         try:
             with open(filepath, "r", encoding=self.encoding, errors="replace") as f:
                 for _ in f:
@@ -333,7 +730,10 @@ class MAUDEParser:
             logger.error(f"Error counting records in {filepath}: {e}")
 
         # Subtract header if present
-        return max(0, count - 1)
+        if has_header:
+            count = max(0, count - 1)
+
+        return count
 
     def get_sample(
         self,
@@ -357,6 +757,54 @@ class MAUDEParser:
             samples.append(record)
         return samples
 
+    def analyze_file_structure(self, filepath: Path) -> Dict[str, Any]:
+        """
+        Analyze the structure of a MAUDE file.
+
+        Useful for debugging column mismatches.
+
+        Args:
+            filepath: Path to the file.
+
+        Returns:
+            Dictionary with analysis results.
+        """
+        file_type = self.detect_file_type(filepath)
+        schema = self.detect_schema_from_header(filepath, file_type)
+
+        # Read a few data rows to analyze
+        sample_rows = []
+        try:
+            with open(filepath, "r", encoding=self.encoding, errors="replace") as f:
+                reader = csv.reader(f, delimiter="|", quotechar='"')
+                for i, row in enumerate(reader):
+                    if i == 0 and schema.has_header:
+                        continue
+                    if i > 5:  # Sample 5 data rows
+                        break
+                    sample_rows.append(row)
+        except Exception as e:
+            logger.error(f"Error analyzing {filepath}: {e}")
+
+        # Analyze column consistency
+        column_counts = [len(row) for row in sample_rows]
+        expected_count = get_expected_column_count(file_type)
+
+        return {
+            "filepath": str(filepath),
+            "file_type": file_type,
+            "schema": {
+                "columns": schema.columns[:10],  # First 10 for brevity
+                "total_columns": schema.column_count,
+                "has_header": schema.has_header,
+                "is_valid": schema.is_valid,
+                "validation_message": schema.validation_message,
+            },
+            "expected_columns": expected_count,
+            "sample_column_counts": column_counts,
+            "column_mismatch": any(c != expected_count for c in column_counts),
+        }
+
 
 def get_product_code_filter_indices(
     columns: List[str], file_type: str
@@ -371,16 +819,19 @@ def get_product_code_filter_indices(
     Returns:
         Column index or None.
     """
+    # Try FDA column names first
     if file_type == "master":
-        try:
-            return columns.index("product_code")
-        except ValueError:
-            return None
+        for name in ["PRODUCT_CODE", "product_code"]:
+            try:
+                return columns.index(name)
+            except ValueError:
+                continue
     elif file_type == "device":
-        try:
-            return columns.index("device_report_product_code")
-        except ValueError:
-            return None
+        for name in ["DEVICE_REPORT_PRODUCT_CODE", "device_report_product_code"]:
+            try:
+                return columns.index(name)
+            except ValueError:
+                continue
     return None
 
 
@@ -404,39 +855,76 @@ def parse_all_files(
 
     # Find all files of this type
     patterns = {
-        "master": "mdrfoi*.txt",
-        "device": "foidev*.txt",
-        "patient": "patient*.txt",
-        "text": "foitext*.txt",
-        "problem": "*problem*.txt",
+        "master": ["mdrfoi*.txt", "mdrfoithru*.txt"],
+        "device": ["foidev*.txt", "foidevthru*.txt", "device*.txt"],
+        "patient": ["patient*.txt", "patientthru*.txt"],
+        "text": ["foitext*.txt", "foitextthru*.txt"],
+        "problem": ["foidevproblem*.txt"],
+        "problem_lookup": ["deviceproblemcodes.txt"],
+        "patient_problem": ["patientproblemcode*.txt"],
+        "patient_problem_data": ["patientproblemdata*.txt"],
+        "asr": ["asr_*.txt"],
+        "asr_ppc": ["asr_ppc*.txt"],
+        "den": ["mdr8*.txt", "mdr9*.txt"],
+        "disclaimer": ["disclaim*.txt"],
     }
 
-    pattern = patterns.get(file_type)
-    if not pattern:
+    file_patterns = patterns.get(file_type, [])
+    if not file_patterns:
         raise ValueError(f"Unknown file type: {file_type}")
 
-    files = sorted(data_dir.glob(pattern))
+    # Gather all matching files
+    files = []
+    for pattern in file_patterns:
+        files.extend(data_dir.glob(pattern))
+    files = sorted(set(files))
 
     # Exclude problem files from device glob
     if file_type == "device":
         files = [f for f in files if "problem" not in f.name.lower()]
 
+    # For ASR, exclude the asr_ppc files when parsing regular ASR
+    if file_type == "asr":
+        files = [f for f in files if "ppc" not in f.name.lower()]
+
+    # For DEN, only include 2-digit year files (mdr84-mdr97)
+    if file_type == "den":
+        valid_files = []
+        for f in files:
+            name = f.name.lower()
+            if name.startswith("mdr") and len(name) <= 9:
+                year_part = name[3:5]
+                if year_part.isdigit():
+                    year = int(year_part)
+                    if 84 <= year <= 97:
+                        valid_files.append(f)
+        files = valid_files
+
     logger.info(f"Found {len(files)} {file_type} files to parse")
 
     for filepath in files:
         try:
-            yield from parser.parse_file(
-                filepath,
-                file_type=file_type,
-                filter_product_codes=filter_product_codes,
-            )
+            # Use appropriate parser based on file type
+            if file_type in parser.CSV_FILE_TYPES:
+                yield from parser.parse_csv_file(
+                    filepath,
+                    file_type=file_type,
+                )
+            elif file_type == "den":
+                yield from parser.parse_den_file(filepath)
+            else:
+                yield from parser.parse_file(
+                    filepath,
+                    file_type=file_type,
+                    filter_product_codes=filter_product_codes,
+                )
         except Exception as e:
             logger.error(f"Error parsing {filepath}: {e}")
             continue
 
 
 if __name__ == "__main__":
-    # Test parsing
+    # Test parsing and schema detection
     import argparse
 
     arg_parser = argparse.ArgumentParser(description="Parse MAUDE files")
@@ -444,18 +932,43 @@ if __name__ == "__main__":
     arg_parser.add_argument("--type", help="File type (auto-detected if not specified)")
     arg_parser.add_argument("--sample", type=int, default=5, help="Number of sample records")
     arg_parser.add_argument("--count", action="store_true", help="Just count records")
+    arg_parser.add_argument("--analyze", action="store_true", help="Analyze file structure")
 
     args = arg_parser.parse_args()
 
     parser = MAUDEParser()
 
-    if args.count:
+    if args.analyze:
+        analysis = parser.analyze_file_structure(args.file)
+        print("\nFile Structure Analysis:")
+        print(f"  File: {analysis['filepath']}")
+        print(f"  Type: {analysis['file_type']}")
+        print(f"  Has Header: {analysis['schema']['has_header']}")
+        print(f"  Detected Columns: {analysis['schema']['total_columns']}")
+        print(f"  Expected Columns: {analysis['expected_columns']}")
+        print(f"  Valid: {analysis['schema']['is_valid']}")
+        print(f"  Message: {analysis['schema']['validation_message']}")
+        print(f"  Sample Column Counts: {analysis['sample_column_counts']}")
+        if analysis['column_mismatch']:
+            print("  WARNING: Column count mismatch detected!")
+    elif args.count:
         count = parser.count_records(args.file)
         print(f"Total records: {count:,}")
     else:
+        # Show schema info
+        file_type = args.type or parser.detect_file_type(args.file)
+        schema = parser.detect_schema_from_header(args.file, file_type)
+        print(f"\nSchema Info:")
+        print(f"  File Type: {schema.file_type}")
+        print(f"  Columns: {schema.column_count}")
+        print(f"  Has Header: {schema.has_header}")
+        print(f"  Valid: {schema.is_valid}")
+
+        print(f"\nFirst {args.sample} records:")
         samples = parser.get_sample(args.file, n=args.sample, file_type=args.type)
         for i, record in enumerate(samples, 1):
             print(f"\n--- Record {i} ---")
-            for key, value in record.items():
+            for key, value in list(record.items())[:15]:  # Show first 15 fields
                 if value:
-                    print(f"  {key}: {value[:100] if isinstance(value, str) and len(value) > 100 else value}")
+                    display_val = value[:80] + "..." if isinstance(value, str) and len(value) > 80 else value
+                    print(f"  {key}: {display_val}")
