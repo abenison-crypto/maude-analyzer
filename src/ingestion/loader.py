@@ -141,7 +141,8 @@ PROBLEM_INSERT_COLUMNS = [
 ]
 
 PATIENT_PROBLEM_INSERT_COLUMNS = [
-    "mdr_report_key", "patient_problem_code",
+    "mdr_report_key", "patient_sequence_number", "patient_problem_code",
+    "date_added", "date_changed",
     "source_file",
 ]
 

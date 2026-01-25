@@ -62,10 +62,7 @@ def render_search():
             selected_product_codes = st.multiselect(
                 "Product Code",
                 options=filter_options.get("product_codes", []),
-                default=["GZB", "LGW", "PMP"] if set(["GZB", "LGW", "PMP"]).issubset(
-                    set(filter_options.get("product_codes", []))
-                ) else [],
-                help="SCS codes: GZB, LGW, PMP",
+                help="Filter by FDA product codes",
             )
 
         with col3:

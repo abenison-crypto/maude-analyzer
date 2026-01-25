@@ -10,7 +10,8 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import config, SCS_PRODUCT_CODES, SCS_MANUFACTURERS
+from config import config
+from typing import Optional, List
 from config.logging_config import get_logger
 from src.database import get_connection, get_table_counts
 
@@ -191,32 +192,81 @@ class DataValidator:
             },
         )
 
-    def check_product_codes(self, conn: duckdb.DuckDBPyConnection) -> ValidationResult:
-        """Check that SCS product codes are present."""
-        result = conn.execute("""
-            SELECT product_code, COUNT(*) as cnt
-            FROM master_events
-            WHERE product_code IN (SELECT UNNEST(?))
-            GROUP BY product_code
-            ORDER BY cnt DESC
-        """, [SCS_PRODUCT_CODES]).fetchall()
+    def check_product_codes(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        expected_codes: Optional[List[str]] = None,
+    ) -> ValidationResult:
+        """
+        Check that product codes are present.
 
-        found_codes = {r[0]: r[1] for r in result}
-        missing_codes = [c for c in SCS_PRODUCT_CODES if c not in found_codes]
+        Args:
+            conn: Database connection.
+            expected_codes: Optional list of specific codes to check for.
+                           If None, just verifies any product codes exist.
 
-        return ValidationResult(
-            check_name="product_codes",
-            passed=len(found_codes) > 0,
-            message=(
-                f"Found SCS product codes: {list(found_codes.keys())}"
-                if found_codes
-                else "No SCS product codes found"
-            ),
-            details={"found": found_codes, "missing": missing_codes},
-        )
+        Returns:
+            ValidationResult indicating if product codes are valid.
+        """
+        if expected_codes:
+            # Check for specific product codes
+            result = conn.execute("""
+                SELECT product_code, COUNT(*) as cnt
+                FROM master_events
+                WHERE product_code IN (SELECT UNNEST(?))
+                GROUP BY product_code
+                ORDER BY cnt DESC
+            """, [expected_codes]).fetchall()
 
-    def check_manufacturers(self, conn: duckdb.DuckDBPyConnection) -> ValidationResult:
-        """Check manufacturer distribution."""
+            found_codes = {r[0]: r[1] for r in result}
+            missing_codes = [c for c in expected_codes if c not in found_codes]
+
+            return ValidationResult(
+                check_name="product_codes",
+                passed=len(found_codes) > 0,
+                message=(
+                    f"Found product codes: {list(found_codes.keys())}"
+                    if found_codes
+                    else "No expected product codes found"
+                ),
+                details={"found": found_codes, "missing": missing_codes},
+            )
+        else:
+            # Just check that any product codes exist
+            result = conn.execute("""
+                SELECT product_code, COUNT(*) as cnt
+                FROM master_events
+                WHERE product_code IS NOT NULL
+                GROUP BY product_code
+                ORDER BY cnt DESC
+                LIMIT 20
+            """).fetchall()
+
+            top_codes = {r[0]: r[1] for r in result}
+
+            return ValidationResult(
+                check_name="product_codes",
+                passed=len(top_codes) > 0,
+                message=f"Found {len(top_codes)} product codes" if top_codes else "No product codes found",
+                details={"top_product_codes": top_codes},
+            )
+
+    def check_manufacturers(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        expected_manufacturers: Optional[List[str]] = None,
+    ) -> ValidationResult:
+        """
+        Check manufacturer distribution.
+
+        Args:
+            conn: Database connection.
+            expected_manufacturers: Optional list of specific manufacturers to check for.
+                                   If None, just verifies any manufacturers exist.
+
+        Returns:
+            ValidationResult indicating if manufacturers are valid.
+        """
         result = conn.execute("""
             SELECT manufacturer_clean, COUNT(*) as cnt
             FROM master_events
@@ -228,18 +278,27 @@ class DataValidator:
 
         top_manufacturers = {r[0]: r[1] for r in result}
 
-        # Check if known SCS manufacturers are present
-        scs_found = [m for m in SCS_MANUFACTURERS if m in top_manufacturers]
+        if expected_manufacturers:
+            # Check for specific manufacturers
+            found = [m for m in expected_manufacturers if m in top_manufacturers]
 
-        return ValidationResult(
-            check_name="manufacturers",
-            passed=len(scs_found) > 0,
-            message=f"Found {len(scs_found)} known SCS manufacturers",
-            details={
-                "top_manufacturers": top_manufacturers,
-                "scs_manufacturers_found": scs_found,
-            },
-        )
+            return ValidationResult(
+                check_name="manufacturers",
+                passed=len(found) > 0 or len(top_manufacturers) > 0,
+                message=f"Found {len(found)} of {len(expected_manufacturers)} expected manufacturers",
+                details={
+                    "top_manufacturers": top_manufacturers,
+                    "expected_found": found,
+                },
+            )
+        else:
+            # Just check that manufacturers exist
+            return ValidationResult(
+                check_name="manufacturers",
+                passed=len(top_manufacturers) > 0,
+                message=f"Found {len(top_manufacturers)} manufacturers",
+                details={"top_manufacturers": top_manufacturers},
+            )
 
     def check_event_types(self, conn: duckdb.DuckDBPyConnection) -> ValidationResult:
         """Check event type distribution."""

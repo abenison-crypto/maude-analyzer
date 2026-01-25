@@ -11,7 +11,7 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import config, EVENT_TYPES, CHART_COLORS, MANUFACTURER_COLORS, SCS_MANUFACTURERS
+from config import config, EVENT_TYPES, CHART_COLORS, MANUFACTURER_COLORS
 from src.database import get_connection
 from src.analysis import get_trend_data, get_filter_options
 
@@ -49,16 +49,14 @@ def render_trends():
         selected_manufacturers = st.multiselect(
             "Manufacturers",
             options=filter_options.get("manufacturers", []),
-            default=[m for m in SCS_MANUFACTURERS if m in filter_options.get("manufacturers", [])],
-            help="Select manufacturers to compare",
+            help="Select manufacturers to compare (leave empty for all)",
         )
 
     with col3:
         selected_product_codes = st.multiselect(
             "Product Codes",
             options=filter_options.get("product_codes", []),
-            default=filter_options.get("product_codes", [])[:3],
-            help="Filter by product codes",
+            help="Filter by product codes (leave empty for all)",
         )
 
     with col4:

@@ -29,7 +29,7 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import config, SCS_PRODUCT_CODES
+from config import config
 from config.logging_config import get_logger
 
 logger = get_logger("openfda")
@@ -231,6 +231,34 @@ class OpenFDAClient:
         result.duration_seconds = (datetime.now() - start_time).total_seconds()
         return result
 
+    def get_recent_events(
+        self,
+        days: int = 30,
+        product_codes: Optional[List[str]] = None,
+        max_records: int = 5000,
+    ) -> OpenFDAResult:
+        """
+        Get recent device adverse events.
+
+        Args:
+            days: Number of days back to search.
+            product_codes: Optional list of product codes to filter by (None = all).
+            max_records: Maximum records to return.
+
+        Returns:
+            OpenFDAResult with recent events.
+        """
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days)
+
+        return self.search(
+            product_codes=product_codes,
+            date_received_start=start_date,
+            date_received_end=end_date,
+            max_records=max_records,
+        )
+
+    # Backward compatibility alias
     def get_recent_scs_events(
         self,
         days: int = 30,
@@ -239,6 +267,9 @@ class OpenFDAClient:
         """
         Get recent SCS device adverse events.
 
+        .. deprecated::
+            Use get_recent_events() with product_codes parameter instead.
+
         Args:
             days: Number of days back to search.
             max_records: Maximum records to return.
@@ -246,13 +277,11 @@ class OpenFDAClient:
         Returns:
             OpenFDAResult with recent SCS events.
         """
-        end_date = date.today()
-        start_date = end_date - timedelta(days=days)
-
-        return self.search(
-            product_codes=SCS_PRODUCT_CODES,
-            date_received_start=start_date,
-            date_received_end=end_date,
+        # Legacy SCS product codes
+        scs_codes = ["GZB", "LGW", "PMP"]
+        return self.get_recent_events(
+            days=days,
+            product_codes=scs_codes,
             max_records=max_records,
         )
 
@@ -267,14 +296,14 @@ class OpenFDAClient:
 
         Args:
             since_date: Start date for records.
-            product_codes: Filter by product codes (default: SCS codes).
+            product_codes: Filter by product codes (None = all products).
             max_records: Maximum records to return.
 
         Returns:
             OpenFDAResult with events since the date.
         """
         return self.search(
-            product_codes=product_codes or SCS_PRODUCT_CODES,
+            product_codes=product_codes,
             date_received_start=since_date,
             date_received_end=date.today(),
             max_records=max_records,
@@ -411,20 +440,22 @@ class OpenFDAClient:
 
 def fetch_recent_updates(
     days: int = 30,
+    product_codes: Optional[List[str]] = None,
     api_key: Optional[str] = None,
 ) -> OpenFDAResult:
     """
-    Convenience function to fetch recent SCS updates.
+    Convenience function to fetch recent updates.
 
     Args:
         days: Number of days back to search.
+        product_codes: Optional product codes to filter by (None = all).
         api_key: Optional FDA API key.
 
     Returns:
         OpenFDAResult with recent events.
     """
     client = OpenFDAClient(api_key=api_key)
-    return client.get_recent_scs_events(days=days)
+    return client.get_recent_events(days=days, product_codes=product_codes)
 
 
 if __name__ == "__main__":
@@ -434,12 +465,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Query openFDA Device Events API")
     parser.add_argument("--days", type=int, default=30, help="Days back to search")
     parser.add_argument("--max", type=int, default=100, help="Max records to fetch")
+    parser.add_argument("--codes", type=str, help="Product codes (comma-separated)")
     parser.add_argument("--output", type=Path, help="Output JSON file")
 
     args = parser.parse_args()
 
+    # Parse product codes if provided
+    product_codes = args.codes.split(",") if args.codes else None
+
     client = OpenFDAClient()
-    result = client.get_recent_scs_events(days=args.days, max_records=args.max)
+    result = client.get_recent_events(
+        days=args.days,
+        product_codes=product_codes,
+        max_records=args.max,
+    )
 
     print(f"Total available: {result.total_records:,}")
     print(f"Fetched: {result.records_fetched:,}")

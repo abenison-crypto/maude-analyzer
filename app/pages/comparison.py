@@ -11,7 +11,7 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import config, EVENT_TYPES, CHART_COLORS, MANUFACTURER_COLORS, SCS_MANUFACTURERS
+from config import config, EVENT_TYPES, CHART_COLORS, MANUFACTURER_COLORS
 from src.database import get_connection
 from src.analysis import (
     get_manufacturer_comparison,
@@ -41,12 +41,10 @@ def render_comparison():
     st.subheader("Select Manufacturers to Compare")
 
     available_manufacturers = filter_options.get("manufacturers", [])
-    default_manufacturers = [m for m in SCS_MANUFACTURERS if m in available_manufacturers][:4]
 
     selected_manufacturers = st.multiselect(
         "Manufacturers (select 2-6 for comparison)",
         options=available_manufacturers,
-        default=default_manufacturers,
         help="Select manufacturers to compare side-by-side",
     )
 

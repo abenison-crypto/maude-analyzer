@@ -4,7 +4,7 @@
 # Product Codes
 # =============================================================================
 
-# SCS Product Codes (Primary Focus)
+# SCS Product Codes (Legacy - kept as a preset, not default)
 SCS_PRODUCT_CODES = ["GZB", "LGW", "PMP"]
 
 # SCS Related Codes (Leads, related devices)
@@ -12,6 +12,10 @@ SCS_RELATED_CODES = ["GZF", "GZD", "GZE"]
 
 # All SCS-related product codes
 ALL_SCS_CODES = SCS_PRODUCT_CODES + SCS_RELATED_CODES
+
+# Default filter values (empty = all products)
+DEFAULT_FILTER_PRODUCT_CODES = []  # Empty means show all products
+DEFAULT_FILTER_MANUFACTURERS = []  # Empty means show all manufacturers
 
 # Product code descriptions
 PRODUCT_CODE_DESCRIPTIONS = {
@@ -27,7 +31,7 @@ PRODUCT_CODE_DESCRIPTIONS = {
 # Manufacturers
 # =============================================================================
 
-# Major SCS Manufacturers
+# Major SCS Manufacturers (Legacy - kept as a preset, not default)
 SCS_MANUFACTURERS = [
     "Abbott",
     "Medtronic",
@@ -37,6 +41,29 @@ SCS_MANUFACTURERS = [
     "Nalu Medical",
     "Saluda Medical",
 ]
+
+# =============================================================================
+# Filter Presets
+# =============================================================================
+
+# Common filter presets for quick access
+FILTER_PRESETS = {
+    "All Products": {
+        "product_codes": [],
+        "manufacturers": [],
+        "description": "Show all products and manufacturers in the database",
+    },
+    "SCS Devices": {
+        "product_codes": ["GZB", "LGW", "PMP"],
+        "manufacturers": ["Abbott", "Medtronic", "Boston Scientific", "Nevro"],
+        "description": "Spinal Cord Stimulation devices from major manufacturers",
+    },
+    "Major SCS Manufacturers": {
+        "product_codes": [],
+        "manufacturers": ["Abbott", "Medtronic", "Boston Scientific", "Nevro"],
+        "description": "All products from major SCS device manufacturers",
+    },
+}
 
 # Manufacturer name variations mapping to standardized names
 MANUFACTURER_MAPPINGS = {

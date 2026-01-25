@@ -581,21 +581,29 @@ class MAUDEParser:
         columns = DEN_COLUMNS_FDA.copy()
 
         try:
-            with open(filepath, "r", encoding=self.encoding, errors="replace") as f:
-                # Try to detect delimiter (pipe or other)
-                first_line = f.readline()
-                f.seek(0)
+            # Read binary and remove NUL characters (common in legacy FDA files)
+            with open(filepath, "rb") as f:
+                content = f.read().replace(b'\x00', b'')
+                content = content.decode(self.encoding, errors="replace")
 
-                if "|" in first_line:
-                    delimiter = "|"
-                elif "," in first_line and first_line.count(",") > 5:
-                    delimiter = ","
-                else:
-                    delimiter = "|"
+            # Process the cleaned content
+            lines = content.splitlines()
+            if not lines:
+                return result
 
-                reader = csv.reader(f, delimiter=delimiter, quotechar='"')
+            # Try to detect delimiter from first line
+            first_line = lines[0] if lines else ""
 
-                for line_num, row in enumerate(reader, 1):
+            if "|" in first_line:
+                delimiter = "|"
+            elif "," in first_line and first_line.count(",") > 5:
+                delimiter = ","
+            else:
+                delimiter = "|"
+
+            reader = csv.reader(lines, delimiter=delimiter, quotechar='"')
+
+            for line_num, row in enumerate(reader, 1):
                     result.total_rows += 1
 
                     # Skip header if present

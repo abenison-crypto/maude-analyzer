@@ -287,13 +287,16 @@ PROBLEM_COLUMNS_FDA: List[str] = [
 ]
 
 # =============================================================================
-# FDA PATIENT PROBLEM FILE COLUMNS (2 columns) - NO HEADER IN FILE
+# FDA PATIENT PROBLEM FILE COLUMNS (5 columns) - HAS HEADER
 # File: patientproblemcode.txt
 # =============================================================================
 
 PATIENT_PROBLEM_COLUMNS_FDA: List[str] = [
     "MDR_REPORT_KEY",              # 1 - Foreign key to master
-    "PATIENT_PROBLEM_CODE",        # 2 - Patient problem code
+    "PATIENT_SEQUENCE_NO",         # 2 - Patient sequence number
+    "PROBLEM_CODE",                # 3 - Patient problem code
+    "DATE_ADDED",                  # 4 - Date added
+    "DATE_CHANGED",                # 5 - Date changed
 ]
 
 # =============================================================================
@@ -399,7 +402,6 @@ DISCLAIMER_COLUMNS_FDA: List[str] = [
 
 HEADERLESS_FILES: Dict[str, List[str]] = {
     "problem": PROBLEM_COLUMNS_FDA,
-    "patient_problem": PATIENT_PROBLEM_COLUMNS_FDA,
     "problem_lookup": PROBLEM_CODES_LOOKUP_COLUMNS_FDA,
 }
 
@@ -433,7 +435,7 @@ EXPECTED_COLUMN_COUNTS: Dict[str, int] = {
     "patient": 10,
     "text": 6,
     "problem": 2,
-    "patient_problem": 2,
+    "patient_problem": 5,
     "patient_problem_data": 2,
     "problem_lookup": 2,
     "asr": 18,
@@ -449,7 +451,7 @@ ALTERNATIVE_COLUMN_COUNTS: Dict[str, List[int]] = {
     "patient": [10],
     "text": [6],
     "problem": [2],
-    "patient_problem": [2],
+    "patient_problem": [5],
     "patient_problem_data": [2],
     "problem_lookup": [2],
     "asr": [18],  # May have variations

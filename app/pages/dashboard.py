@@ -11,7 +11,7 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import config, EVENT_TYPES, CHART_COLORS, SCS_MANUFACTURERS
+from config import config, EVENT_TYPES, CHART_COLORS
 from src.database import get_connection
 from src.analysis import (
     get_mdr_summary,
@@ -74,7 +74,7 @@ def render_kpi_cards(summary: dict):
         st.metric(
             "Total MDRs",
             f"{total:,}",
-            help="Total Medical Device Reports for SCS devices",
+            help="Total Medical Device Reports",
         )
 
     with col2:

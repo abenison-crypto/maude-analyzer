@@ -223,12 +223,15 @@ PROBLEM_COLUMN_MAPPING: Dict[str, str] = {
 }
 
 # =============================================================================
-# PATIENT PROBLEM FILE COLUMN MAPPING (2 columns)
+# PATIENT PROBLEM FILE COLUMN MAPPING (5 columns)
 # =============================================================================
 
 PATIENT_PROBLEM_COLUMN_MAPPING: Dict[str, str] = {
     "MDR_REPORT_KEY": "mdr_report_key",
-    "PATIENT_PROBLEM_CODE": "patient_problem_code",
+    "PATIENT_SEQUENCE_NO": "patient_sequence_number",
+    "PROBLEM_CODE": "patient_problem_code",
+    "DATE_ADDED": "date_added",
+    "DATE_CHANGED": "date_changed",
 }
 
 # =============================================================================

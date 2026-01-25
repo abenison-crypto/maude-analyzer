@@ -23,7 +23,7 @@ class DatabaseConfig:
         )
     )
     read_only: bool = False
-    memory_limit: str = "4GB"
+    memory_limit: str = "8GB"
     threads: int = -1  # Use all available threads
 
 

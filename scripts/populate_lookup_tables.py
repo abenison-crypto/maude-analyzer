@@ -40,7 +40,7 @@ def populate_problem_codes(
     logger,
 ) -> int:
     """
-    Populate problem_codes table from deviceproblemcodes.txt.
+    Populate problem_codes table from deviceproblemcodes.txt or .csv.
 
     Args:
         conn: DuckDB connection
@@ -50,8 +50,13 @@ def populate_problem_codes(
     Returns:
         Number of records loaded
     """
-    # Look for the file
-    problem_codes_file = data_dir / "deviceproblemcodes.txt"
+    # Look for the file (try .csv first, then .txt)
+    problem_codes_file = data_dir / "deviceproblemcodes.csv"
+    delimiter = ","
+
+    if not problem_codes_file.exists():
+        problem_codes_file = data_dir / "deviceproblemcodes.txt"
+        delimiter = "|"
 
     if not problem_codes_file.exists():
         logger.warning(f"Problem codes file not found: {problem_codes_file}")
@@ -66,25 +71,30 @@ def populate_problem_codes(
     errors = 0
 
     try:
-        with open(problem_codes_file, "r", encoding="latin-1", errors="replace") as f:
-            reader = csv.reader(f, delimiter="|")
+        with open(problem_codes_file, "r", encoding="utf-8-sig", errors="replace") as f:
+            reader = csv.reader(f, delimiter=delimiter)
 
-            # Skip header if present
+            # Skip header row (FDA_CODE,TERM,...)
             first_row = next(reader, None)
-            if first_row and not first_row[0].isdigit():
-                # First row is header, skip it
-                pass
-            else:
-                # First row is data, process it
-                if first_row and len(first_row) >= 2:
-                    try:
-                        conn.execute(
-                            "INSERT INTO problem_codes (problem_code, description) VALUES (?, ?)",
-                            [first_row[0].strip(), first_row[1].strip() if len(first_row) > 1 else None]
-                        )
-                        count += 1
-                    except Exception as e:
-                        errors += 1
+            if first_row:
+                # Check if it's a header by looking for non-numeric first field
+                first_val = first_row[0].strip().lstrip('\ufeff')
+                if first_val.upper() in ('FDA_CODE', 'CODE', 'PROBLEM_CODE') or not first_val.replace('-', '').isdigit():
+                    # Header row, skip it
+                    logger.debug(f"Skipping header: {first_row}")
+                else:
+                    # First row is data, process it
+                    if len(first_row) >= 2:
+                        try:
+                            code = first_val
+                            desc = first_row[1].strip() if len(first_row) > 1 else None
+                            conn.execute(
+                                "INSERT INTO problem_codes (problem_code, description) VALUES (?, ?)",
+                                [code, desc]
+                            )
+                            count += 1
+                        except Exception as e:
+                            errors += 1
 
             # Process remaining rows
             for row in reader:
@@ -93,7 +103,7 @@ def populate_problem_codes(
                         code = row[0].strip()
                         desc = row[1].strip() if len(row) > 1 else None
 
-                        if code:
+                        if code and code.replace('-', '').isdigit():
                             conn.execute(
                                 "INSERT OR REPLACE INTO problem_codes (problem_code, description) VALUES (?, ?)",
                                 [code, desc]
@@ -118,7 +128,7 @@ def populate_patient_problem_codes(
     logger,
 ) -> int:
     """
-    Populate patient_problem_codes table from patientproblemdata.txt.
+    Populate patient_problem_codes table from patientproblemcode.csv or patientproblemdata.txt.
 
     Args:
         conn: DuckDB connection
@@ -128,8 +138,16 @@ def populate_patient_problem_codes(
     Returns:
         Number of records loaded
     """
-    # Look for the file
-    patient_problem_file = data_dir / "patientproblemdata.txt"
+    # Look for the file (try .csv first, then .txt variants)
+    patient_problem_file = data_dir / "patientproblemcode.csv"
+    delimiter = ","
+
+    if not patient_problem_file.exists():
+        patient_problem_file = data_dir / "patientproblemdata.csv"
+
+    if not patient_problem_file.exists():
+        patient_problem_file = data_dir / "patientproblemdata.txt"
+        delimiter = "|"
 
     if not patient_problem_file.exists():
         logger.warning(f"Patient problem data file not found: {patient_problem_file}")
@@ -144,23 +162,23 @@ def populate_patient_problem_codes(
     errors = 0
 
     try:
-        with open(patient_problem_file, "r", encoding="latin-1", errors="replace") as f:
-            reader = csv.reader(f, delimiter="|")
+        with open(patient_problem_file, "r", encoding="utf-8-sig", errors="replace") as f:
+            reader = csv.reader(f, delimiter=delimiter)
 
             # Skip header if present
             first_row = next(reader, None)
             if first_row:
-                first_val = first_row[0].strip().upper() if first_row[0] else ""
-                if "CODE" in first_val or "PROBLEM" in first_val:
+                first_val = first_row[0].strip().upper().lstrip('\ufeff') if first_row[0] else ""
+                if "CODE" in first_val or "PROBLEM" in first_val or "FDA" in first_val:
                     # Header row, skip
-                    pass
+                    logger.debug(f"Skipping header: {first_row}")
                 else:
                     # Data row, process
                     if len(first_row) >= 1:
                         try:
                             code = first_row[0].strip()
                             desc = first_row[1].strip() if len(first_row) > 1 else None
-                            if code:
+                            if code and code.replace('-', '').isdigit():
                                 conn.execute(
                                     "INSERT INTO patient_problem_codes (problem_code, description) VALUES (?, ?)",
                                     [code, desc]
@@ -176,7 +194,7 @@ def populate_patient_problem_codes(
                         code = row[0].strip()
                         desc = row[1].strip() if len(row) > 1 else None
 
-                        if code:
+                        if code and code.replace('-', '').isdigit():
                             conn.execute(
                                 "INSERT OR REPLACE INTO patient_problem_codes (problem_code, description) VALUES (?, ?)",
                                 [code, desc]

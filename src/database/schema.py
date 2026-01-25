@@ -348,11 +348,15 @@ CREATE TABLE IF NOT EXISTS patient_problems (
     -- Foreign Key
     mdr_report_key VARCHAR NOT NULL,
 
+    -- Patient sequence
+    patient_sequence_number INTEGER,
+
     -- Patient Problem Code
     patient_problem_code VARCHAR,
 
-    -- Date (derived from file)
-    date_added DATE,
+    -- Dates
+    date_added TIMESTAMP,
+    date_changed TIMESTAMP,
 
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

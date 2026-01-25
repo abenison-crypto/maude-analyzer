@@ -35,13 +35,13 @@ import argparse
 import sys
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import config, SCS_PRODUCT_CODES
+from config import config
 from config.logging_config import setup_logging, get_logger
 from src.database import get_connection, get_table_counts
 from src.database.schema import get_schema_version
@@ -182,7 +182,7 @@ def process_change_files(
 def load_data_files(
     data_dir: Path,
     db_path: Path,
-    filter_scs: bool,
+    filter_codes: Optional[List[str]],
     logger,
 ) -> Dict[str, Any]:
     """
@@ -191,7 +191,7 @@ def load_data_files(
     Args:
         data_dir: Directory containing data files.
         db_path: Path to database.
-        filter_scs: Whether to filter to SCS product codes only.
+        filter_codes: Optional list of product codes to filter by (None = all).
         logger: Logger instance.
 
     Returns:
@@ -199,7 +199,6 @@ def load_data_files(
     """
     logger.info("\nLoading data files...")
 
-    filter_codes = SCS_PRODUCT_CODES if filter_scs else None
     loader = MAUDELoader(
         db_path=db_path,
         filter_product_codes=filter_codes,
@@ -387,9 +386,10 @@ def main():
         help="Check for updates without downloading",
     )
     parser.add_argument(
-        "--all-products",
-        action="store_true",
-        help="Load all products (not just SCS codes)",
+        "--filter-codes",
+        type=str,
+        default=None,
+        help="Comma-separated product codes to filter (e.g., 'GZB,LGW,PMP'). Default: all products",
     )
     parser.add_argument(
         "--data-dir",
@@ -486,10 +486,15 @@ def main():
         logger.info("STEP 4: Loading data files")
         logger.info("-" * 40)
 
+        # Parse filter codes
+        filter_codes = None
+        if args.filter_codes:
+            filter_codes = [c.strip() for c in args.filter_codes.split(",")]
+
         load_results = load_data_files(
             args.data_dir,
             args.db,
-            filter_scs=not args.all_products,
+            filter_codes=filter_codes,
             logger=logger,
         )
 

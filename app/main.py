@@ -273,8 +273,8 @@ def render_settings():
         **{config.app.name}** v{config.app.version}
 
         A local desktop application for analyzing FDA MAUDE (Manufacturer and User
-        Facility Device Experience) database records, with focus on Spinal Cord
-        Stimulation (SCS) devices.
+        Facility Device Experience) database records. Supports the full MAUDE database
+        with comprehensive filtering by product code, manufacturer, date range, and more.
 
         Built with:
         - DuckDB for fast analytics

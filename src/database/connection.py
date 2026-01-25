@@ -61,10 +61,14 @@ class DatabaseConnection:
         if self._connection is None:
             return
 
-        # Set memory limit
+        # Set memory limit (use higher limit for bulk loading)
         self._connection.execute(
             f"SET memory_limit = '{config.database.memory_limit}'"
         )
+
+        # Disable insertion order preservation to reduce memory usage
+        # during bulk inserts with INSERT OR REPLACE
+        self._connection.execute("SET preserve_insertion_order = false")
 
         # Enable progress bar for long operations
         self._connection.execute("SET enable_progress_bar = true")
