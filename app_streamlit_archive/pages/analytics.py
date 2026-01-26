@@ -1,4 +1,9 @@
-"""Advanced Analytics page for MAUDE Analyzer."""
+"""Advanced Analytics page for MAUDE Analyzer.
+
+Provides signal detection, text analysis, and statistical comparisons.
+Handles sparse data gracefully with data quality warnings.
+No manufacturer is prioritized by default.
+"""
 
 import streamlit as st
 import pandas as pd
@@ -11,7 +16,7 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import config, CHART_COLORS, MANUFACTURER_COLORS, EVENT_TYPES
+from config import config, CHART_COLORS, get_event_type_name, get_event_type_color
 from src.database import get_connection
 from src.analysis import (
     get_filter_options,
@@ -27,11 +32,15 @@ from src.analysis import (
     generate_html_report,
     ReportConfig,
 )
+from src.analysis.cached import cached_data_quality_summary
+from app.components.searchable_select import CachedSearchableSelect
+from app.utils.display_helpers import format_nullable
 
 
 def render_analytics():
     """Render the advanced analytics page."""
     st.markdown("Advanced analysis tools including signal detection, text analysis, and reports.")
+    st.caption("All analyses default to complete dataset - filter to specific manufacturers/products as needed")
 
     if not config.database.path.exists():
         st.warning("Database not found. Please run initial_load.py first.")
@@ -58,12 +67,39 @@ def render_analytics():
         render_report_tab()
 
 
+def render_data_quality_warning():
+    """Show data quality warnings for analytics."""
+    try:
+        quality = cached_data_quality_summary()
+        coverage = quality.get("coverage", {})
+
+        issues = []
+        mfr_cov = coverage.get("manufacturer_clean", 100)
+        pc_cov = coverage.get("product_code", 100)
+
+        if mfr_cov < 80:
+            issues.append(f"manufacturer ({mfr_cov:.0f}% populated)")
+        if pc_cov < 80:
+            issues.append(f"product code ({pc_cov:.0f}% populated)")
+
+        if issues:
+            st.info(
+                f"Note: Some records have missing data for: {', '.join(issues)}. "
+                "Analysis results may not reflect complete data."
+            )
+    except Exception:
+        pass
+
+
 def render_signals_tab():
     """Render the safety signals detection tab."""
     st.subheader("Safety Signal Detection")
     st.markdown(
         "Automatically detect unusual patterns in MDR data that may indicate emerging safety issues."
     )
+
+    # Data quality note
+    render_data_quality_warning()
 
     # Run detection
     if st.button("Run Signal Detection", type="primary"):
@@ -79,14 +115,6 @@ def render_signals_tab():
 
                 # Display signals by severity
                 for signal in result.signals:
-                    severity_colors = {
-                        SignalSeverity.CRITICAL: "red",
-                        SignalSeverity.HIGH: "orange",
-                        SignalSeverity.MEDIUM: "yellow",
-                        SignalSeverity.LOW: "blue",
-                    }
-                    color = severity_colors.get(signal.severity, "gray")
-
                     with st.container():
                         col1, col2 = st.columns([1, 4])
 
@@ -138,11 +166,15 @@ def render_text_analysis_tab():
 
     try:
         with get_connection() as conn:
-            filter_options = get_filter_options(conn)
+            render_text_analysis_content(conn)
     except Exception as e:
-        st.error(f"Error loading filter options: {e}")
-        return
+        st.error(f"Error loading text analysis: {e}")
+        import traceback
+        st.code(traceback.format_exc())
 
+
+def render_text_analysis_content(conn):
+    """Render text analysis content."""
     # Analysis type selection
     analysis_type = st.radio(
         "Analysis Type",
@@ -153,14 +185,14 @@ def render_text_analysis_tab():
     st.divider()
 
     if analysis_type == "Term Frequency":
-        render_term_frequency_analysis(filter_options)
+        render_term_frequency_analysis(conn)
     elif analysis_type == "Keyword Extraction":
-        render_keyword_analysis(filter_options)
+        render_keyword_analysis(conn)
     else:
-        render_narrative_search(filter_options)
+        render_narrative_search(conn)
 
 
-def render_term_frequency_analysis(filter_options: dict):
+def render_term_frequency_analysis(conn):
     """Render term frequency analysis."""
     st.markdown("Analyze frequency of adverse event terms in MDR narratives.")
 
@@ -173,20 +205,29 @@ def render_term_frequency_analysis(filter_options: dict):
         )
 
     with col2:
-        manufacturers = st.multiselect(
-            "Filter by Manufacturer",
-            options=filter_options.get("manufacturers", []),
+        # Searchable manufacturer select
+        st.markdown("**Filter by Manufacturer** (optional)")
+        mfr_select = CachedSearchableSelect(
+            conn=conn,
+            table="master_events",
+            column="manufacturer_clean",
+            key="term_freq_mfr",
+            label="Manufacturers",
+        )
+        manufacturers = mfr_select.render(
+            multi=True,
+            default=[],
+            show_counts=True,
         )
 
     if st.button("Analyze Terms"):
         with st.spinner("Analyzing term frequency..."):
             try:
-                with get_connection() as conn:
-                    df = get_term_frequency(
-                        term_category=category if category != "All Categories" else None,
-                        manufacturers=manufacturers if manufacturers else None,
-                        conn=conn,
-                    )
+                df = get_term_frequency(
+                    term_category=category if category != "All Categories" else None,
+                    manufacturers=manufacturers if manufacturers else None,
+                    conn=conn,
+                )
 
                 if df.empty:
                     st.info("No term matches found.")
@@ -216,7 +257,7 @@ def render_term_frequency_analysis(filter_options: dict):
                 st.error(f"Error analyzing terms: {e}")
 
 
-def render_keyword_analysis(filter_options: dict):
+def render_keyword_analysis(conn):
     """Render keyword extraction analysis."""
     st.markdown("Extract most frequent keywords from MDR narratives.")
 
@@ -226,21 +267,29 @@ def render_keyword_analysis(filter_options: dict):
         n_keywords = st.slider("Number of Keywords", 10, 50, 25)
 
     with col2:
-        manufacturers = st.multiselect(
-            "Filter by Manufacturer",
-            options=filter_options.get("manufacturers", []),
+        # Searchable manufacturer select
+        st.markdown("**Filter by Manufacturer** (optional)")
+        mfr_select = CachedSearchableSelect(
+            conn=conn,
+            table="master_events",
+            column="manufacturer_clean",
             key="keyword_mfr",
+            label="Manufacturers",
+        )
+        manufacturers = mfr_select.render(
+            multi=True,
+            default=[],
+            show_counts=True,
         )
 
     if st.button("Extract Keywords"):
         with st.spinner("Extracting keywords..."):
             try:
-                with get_connection() as conn:
-                    df = get_keyword_trends(
-                        n_keywords=n_keywords,
-                        manufacturers=manufacturers if manufacturers else None,
-                        conn=conn,
-                    )
+                df = get_keyword_trends(
+                    n_keywords=n_keywords,
+                    manufacturers=manufacturers if manufacturers else None,
+                    conn=conn,
+                )
 
                 if df.empty:
                     st.info("No keywords found.")
@@ -264,7 +313,7 @@ def render_keyword_analysis(filter_options: dict):
                 st.error(f"Error extracting keywords: {e}")
 
 
-def render_narrative_search(filter_options: dict):
+def render_narrative_search(conn):
     """Render narrative search functionality."""
     st.markdown("Search MDR narratives for specific terms or phrases.")
 
@@ -276,10 +325,19 @@ def render_narrative_search(filter_options: dict):
     col1, col2 = st.columns(2)
 
     with col1:
-        manufacturers = st.multiselect(
-            "Filter by Manufacturer",
-            options=filter_options.get("manufacturers", []),
+        # Searchable manufacturer select
+        st.markdown("**Filter by Manufacturer** (optional)")
+        mfr_select = CachedSearchableSelect(
+            conn=conn,
+            table="master_events",
+            column="manufacturer_clean",
             key="search_mfr",
+            label="Manufacturers",
+        )
+        manufacturers = mfr_select.render(
+            multi=True,
+            default=[],
+            show_counts=True,
         )
 
     with col2:
@@ -290,13 +348,12 @@ def render_narrative_search(filter_options: dict):
 
         with st.spinner("Searching narratives..."):
             try:
-                with get_connection() as conn:
-                    df = search_narratives(
-                        search_terms=terms,
-                        manufacturers=manufacturers if manufacturers else None,
-                        limit=limit,
-                        conn=conn,
-                    )
+                df = search_narratives(
+                    search_terms=terms,
+                    manufacturers=manufacturers if manufacturers else None,
+                    limit=limit,
+                    conn=conn,
+                )
 
                 if df.empty:
                     st.info("No matching narratives found.")
@@ -306,14 +363,18 @@ def render_narrative_search(filter_options: dict):
 
                 # Display results
                 for _, row in df.head(20).iterrows():
-                    with st.expander(
-                        f"MDR {row['mdr_report_key']} - {row['manufacturer_clean']} ({row['date_received']})"
-                    ):
-                        st.markdown(f"**Event Type:** {EVENT_TYPES.get(row['event_type'], row['event_type'])}")
-                        st.markdown(f"**Product Code:** {row['product_code']}")
+                    mdr_key = format_nullable(row.get('mdr_report_key'))
+                    mfr = format_nullable(row.get('manufacturer_clean'))
+                    date_rcvd = format_nullable(row.get('date_received'))
+                    event_type = row.get('event_type', '')
+                    product_code = format_nullable(row.get('product_code'))
+
+                    with st.expander(f"MDR {mdr_key} - {mfr} ({date_rcvd})"):
+                        st.markdown(f"**Event Type:** {get_event_type_name(event_type)}")
+                        st.markdown(f"**Product Code:** {product_code}")
                         st.divider()
                         # Highlight search terms in text
-                        text = row["text_content"] or ""
+                        text = row.get("text_content") or ""
                         for term in terms:
                             text = text.replace(term, f"**{term}**")
                             text = text.replace(term.upper(), f"**{term.upper()}**")
@@ -330,11 +391,15 @@ def render_comparison_tab():
 
     try:
         with get_connection() as conn:
-            filter_options = get_filter_options(conn)
+            render_comparison_content(conn)
     except Exception as e:
-        st.error(f"Error loading filter options: {e}")
-        return
+        st.error(f"Error loading comparison: {e}")
+        import traceback
+        st.code(traceback.format_exc())
 
+
+def render_comparison_content(conn):
+    """Render comparison content."""
     comparison_type = st.radio(
         "Comparison Type",
         options=["Manufacturer vs Manufacturer", "Manufacturer Rankings"],
@@ -343,33 +408,61 @@ def render_comparison_tab():
 
     st.divider()
 
+    # Data quality note
+    render_data_quality_warning()
+
     if comparison_type == "Manufacturer vs Manufacturer":
-        render_head_to_head_comparison(filter_options)
+        render_head_to_head_comparison(conn)
     else:
-        render_rankings(filter_options)
+        render_rankings(conn)
 
 
-def render_head_to_head_comparison(filter_options: dict):
-    """Render head-to-head manufacturer comparison."""
-    manufacturers = filter_options.get("manufacturers", [])
-
+def render_head_to_head_comparison(conn):
+    """Render head-to-head manufacturer comparison with searchable selects."""
     col1, col2 = st.columns(2)
 
     with col1:
-        mfr_a = st.selectbox("Manufacturer A", options=manufacturers, key="mfr_a")
-
-    with col2:
-        mfr_b = st.selectbox(
-            "Manufacturer B",
-            options=[m for m in manufacturers if m != mfr_a],
-            key="mfr_b",
+        st.markdown("**Manufacturer A** (type to search)")
+        mfr_a_select = CachedSearchableSelect(
+            conn=conn,
+            table="master_events",
+            column="manufacturer_clean",
+            key="compare_mfr_a",
+            label="Manufacturer A",
+        )
+        mfr_a = mfr_a_select.render(
+            multi=False,
+            default=None,
+            show_counts=True,
         )
 
-    if st.button("Compare") and mfr_a and mfr_b:
+    with col2:
+        st.markdown("**Manufacturer B** (type to search)")
+        mfr_b_select = CachedSearchableSelect(
+            conn=conn,
+            table="master_events",
+            column="manufacturer_clean",
+            key="compare_mfr_b",
+            label="Manufacturer B",
+        )
+        mfr_b = mfr_b_select.render(
+            multi=False,
+            default=None,
+            show_counts=True,
+        )
+
+    if not mfr_a or not mfr_b:
+        st.info("Select two manufacturers to compare.")
+        return
+
+    if mfr_a == mfr_b:
+        st.warning("Please select two different manufacturers.")
+        return
+
+    if st.button("Compare"):
         with st.spinner("Comparing manufacturers..."):
             try:
-                with get_connection() as conn:
-                    results = compare_manufacturers(mfr_a, mfr_b, conn=conn)
+                results = compare_manufacturers(mfr_a, mfr_b, conn=conn)
 
                 if not results:
                     st.warning("No data available for comparison.")
@@ -402,14 +495,14 @@ def render_head_to_head_comparison(filter_options: dict):
                     name=mfr_a,
                     x=metrics,
                     y=values_a,
-                    marker_color=MANUFACTURER_COLORS.get(mfr_a, CHART_COLORS["primary"]),
+                    marker_color=CHART_COLORS.get("primary", "#1f77b4"),
                 ))
 
                 fig.add_trace(go.Bar(
                     name=mfr_b,
                     x=metrics,
                     y=values_b,
-                    marker_color=MANUFACTURER_COLORS.get(mfr_b, CHART_COLORS["secondary"]),
+                    marker_color=CHART_COLORS.get("secondary", "#ff7f0e"),
                 ))
 
                 fig.update_layout(
@@ -433,7 +526,7 @@ def render_head_to_head_comparison(filter_options: dict):
                 st.error(f"Error comparing manufacturers: {e}")
 
 
-def render_rankings(filter_options: dict):
+def render_rankings(conn):
     """Render manufacturer rankings."""
     col1, col2 = st.columns(2)
 
@@ -450,12 +543,11 @@ def render_rankings(filter_options: dict):
     if st.button("Show Rankings"):
         with st.spinner("Calculating rankings..."):
             try:
-                with get_connection() as conn:
-                    df = rank_manufacturers_by_metric(
-                        metric=metric,
-                        min_mdrs=min_mdrs,
-                        conn=conn,
-                    )
+                df = rank_manufacturers_by_metric(
+                    metric=metric,
+                    min_mdrs=min_mdrs,
+                    conn=conn,
+                )
 
                 if df.empty:
                     st.info("No manufacturers meet the minimum MDR threshold.")
@@ -463,8 +555,13 @@ def render_rankings(filter_options: dict):
 
                 st.subheader(f"Manufacturers Ranked by {metric.replace('_', ' ').title()}")
 
-                # Display table
-                display_cols = ["rank", "manufacturer_clean", "total_mdrs", metric]
+                # Handle NULL manufacturers
+                if "manufacturer_clean" in df.columns:
+                    df["manufacturer_clean"] = df["manufacturer_clean"].fillna("Unknown")
+
+                # Display table with available columns
+                display_cols = [c for c in ["rank", "manufacturer_clean", "total_mdrs", metric] if c in df.columns]
+
                 st.dataframe(
                     df[display_cols].head(20),
                     use_container_width=True,
@@ -478,16 +575,17 @@ def render_rankings(filter_options: dict):
                 )
 
                 # Bar chart
-                fig = px.bar(
-                    df.head(15),
-                    x="manufacturer_clean",
-                    y=metric,
-                    color=metric,
-                    color_continuous_scale="Reds" if "death" in metric else "Blues",
-                    title=f"Top 15 by {metric.replace('_', ' ').title()}",
-                )
-                fig.update_layout(xaxis_tickangle=-45, height=400)
-                st.plotly_chart(fig, use_container_width=True)
+                if "manufacturer_clean" in df.columns and metric in df.columns:
+                    fig = px.bar(
+                        df.head(15),
+                        x="manufacturer_clean",
+                        y=metric,
+                        color=metric,
+                        color_continuous_scale="Reds" if "death" in metric else "Blues",
+                        title=f"Top 15 by {metric.replace('_', ' ').title()}",
+                    )
+                    fig.update_layout(xaxis_tickangle=-45, height=400)
+                    st.plotly_chart(fig, use_container_width=True)
 
             except Exception as e:
                 st.error(f"Error calculating rankings: {e}")
@@ -500,11 +598,13 @@ def render_report_tab():
 
     try:
         with get_connection() as conn:
-            filter_options = get_filter_options(conn)
+            render_report_content(conn)
     except Exception as e:
-        st.error(f"Error loading filter options: {e}")
-        return
+        st.error(f"Error loading report generator: {e}")
 
+
+def render_report_content(conn):
+    """Render report generation content."""
     # Report options
     col1, col2 = st.columns(2)
 
@@ -513,10 +613,19 @@ def render_report_tab():
         subtitle = st.text_input("Subtitle (optional)", value="")
 
     with col2:
-        manufacturers = st.multiselect(
-            "Filter by Manufacturer",
-            options=filter_options.get("manufacturers", []),
+        # Searchable manufacturer select
+        st.markdown("**Filter by Manufacturer** (optional)")
+        mfr_select = CachedSearchableSelect(
+            conn=conn,
+            table="master_events",
+            column="manufacturer_clean",
             key="report_mfr",
+            label="Manufacturers",
+        )
+        manufacturers = mfr_select.render(
+            multi=True,
+            default=[],
+            show_counts=True,
         )
 
     # Sections to include
@@ -544,8 +653,7 @@ def render_report_tab():
                     manufacturers=manufacturers if manufacturers else None,
                 )
 
-                with get_connection() as conn:
-                    html_content = generate_html_report(report_config, conn)
+                html_content = generate_html_report(report_config, conn)
 
                 # Provide download button
                 st.download_button(

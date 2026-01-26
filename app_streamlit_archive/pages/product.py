@@ -1,4 +1,9 @@
-"""Product Analysis page for MAUDE Analyzer."""
+"""Product Analysis page for MAUDE Analyzer.
+
+Analyze MDR patterns by product code with searchable selection.
+Handles sparse product code data (54% populated) with data quality warnings.
+No product code is prioritized by default.
+"""
 
 import streamlit as st
 import pandas as pd
@@ -11,14 +16,17 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import config, EVENT_TYPES, CHART_COLORS, MANUFACTURER_COLORS, PRODUCT_CODE_DESCRIPTIONS
+from config import config, CHART_COLORS, get_event_type_name, get_event_type_color
 from src.database import get_connection
-from src.analysis import get_filter_options
+from src.analysis.cached import cached_data_quality_summary, cached_product_code_lookup
+from app.components.searchable_select import CachedSearchableSelect
+from app.utils.display_helpers import format_nullable, format_number
 
 
 def render_product_analysis():
     """Render the product analysis page."""
     st.markdown("Analyze MDR patterns by product code and device category.")
+    st.caption("Search for a product code to view detailed analysis")
 
     # Check database
     if not config.database.path.exists():
@@ -27,44 +35,78 @@ def render_product_analysis():
 
     try:
         with get_connection() as conn:
-            filter_options = get_filter_options(conn)
+            render_product_content(conn)
     except Exception as e:
         st.error(f"Error connecting to database: {e}")
-        return
+        import traceback
+        st.code(traceback.format_exc())
+
+
+def render_product_content(conn):
+    """Render product analysis content with searchable selection."""
+    # Data quality warning
+    render_data_quality_note()
 
     # Product code selection
     st.subheader("Select Product Code")
 
-    col1, col2 = st.columns([1, 2])
+    col1, col2 = st.columns([1, 1])
 
     with col1:
-        selected_product_code = st.selectbox(
-            "Product Code",
-            options=filter_options.get("product_codes", []),
-            format_func=lambda x: f"{x} - {PRODUCT_CODE_DESCRIPTIONS.get(x, 'Unknown')[:40]}...",
+        # Searchable product code select
+        st.markdown("**Product Code** (type to search)")
+        pc_select = CachedSearchableSelect(
+            conn=conn,
+            table="master_events",
+            column="product_code",
+            key="product_pc",
+            label="Product Code",
+        )
+        selected_product_code = pc_select.render(
+            multi=False,
+            default=None,
+            show_counts=True,
         )
 
     with col2:
-        date_range = st.date_input(
+        date_range_option = st.selectbox(
             "Date Range",
-            value=(date.today() - timedelta(days=365 * 5), date.today()),
+            options=["Last 5 Years", "Last 3 Years", "Last Year", "All Time", "Custom"],
+            index=0,
         )
 
-    start_date = date_range[0] if len(date_range) > 0 else None
-    end_date = date_range[1] if len(date_range) > 1 else None
+    # Handle date range
+    if date_range_option == "Custom":
+        date_col1, date_col2 = st.columns(2)
+        with date_col1:
+            start_date = st.date_input("Start Date", value=date.today() - timedelta(days=365*5))
+        with date_col2:
+            end_date = st.date_input("End Date", value=date.today())
+    elif date_range_option == "All Time":
+        start_date = None
+        end_date = None
+    elif date_range_option == "Last Year":
+        start_date = date.today() - timedelta(days=365)
+        end_date = date.today()
+    elif date_range_option == "Last 3 Years":
+        start_date = date.today() - timedelta(days=365*3)
+        end_date = date.today()
+    else:  # Last 5 Years
+        start_date = date.today() - timedelta(days=365*5)
+        end_date = date.today()
 
     if not selected_product_code:
-        st.info("Please select a product code.")
+        st.info("Please search for and select a product code to analyze.")
+        render_top_products_hint(conn)
         return
 
     st.divider()
 
     # Get product-specific data
     try:
-        with get_connection() as conn:
-            product_data = get_product_analysis_data(
-                conn, selected_product_code, start_date, end_date
-            )
+        product_data = get_product_analysis_data(
+            conn, selected_product_code, start_date, end_date
+        )
     except Exception as e:
         st.error(f"Error loading product data: {e}")
         return
@@ -75,7 +117,18 @@ def render_product_analysis():
 
     # Product header
     st.subheader(f"Product Code: {selected_product_code}")
-    st.markdown(f"**{PRODUCT_CODE_DESCRIPTIONS.get(selected_product_code, 'Unknown Device')}**")
+
+    # Get product description from lookup
+    try:
+        lookup = cached_product_code_lookup()
+        product_info = lookup.get(selected_product_code, {})
+        description = product_info.get("name", "Unknown Device")
+        device_class = product_info.get("class", "")
+        st.markdown(f"**{description}**")
+        if device_class:
+            st.caption(f"Device Class: {device_class}")
+    except Exception:
+        st.markdown("**Device description not available**")
 
     # KPI cards
     render_product_kpis(product_data["summary"])
@@ -102,15 +155,68 @@ def render_product_analysis():
     st.divider()
 
     # Sankey diagram
-    st.subheader("Event Flow: Manufacturer → Event Type")
+    st.subheader("Event Flow: Manufacturer to Event Type")
     render_sankey_diagram(product_data["by_manufacturer"], product_data["event_breakdown"])
 
     st.divider()
 
     # Top brands treemap
-    if product_data["top_brands"]:
+    if product_data["top_brands"] is not None and not product_data["top_brands"].empty:
         st.subheader("Top Brands (Treemap)")
         render_brand_treemap(product_data["top_brands"])
+
+
+def render_data_quality_note():
+    """Show data quality context for product analysis."""
+    try:
+        quality = cached_data_quality_summary()
+        coverage = quality.get("coverage", {})
+        pc_coverage = coverage.get("product_code", 100)
+
+        if pc_coverage < 80:
+            st.info(
+                f"Note: Product code data is {pc_coverage:.0f}% populated. "
+                f"Approximately {100-pc_coverage:.0f}% of MDRs do not have a product code assigned."
+            )
+    except Exception:
+        pass
+
+
+def render_top_products_hint(conn):
+    """Show hint about top product codes when none selected."""
+    try:
+        top_products = conn.execute("""
+            SELECT product_code, COUNT(*) as count
+            FROM master_events
+            WHERE product_code IS NOT NULL
+            GROUP BY product_code
+            ORDER BY count DESC
+            LIMIT 10
+        """).fetchdf()
+
+        if not top_products.empty:
+            # Try to get descriptions
+            try:
+                lookup = cached_product_code_lookup()
+                top_products["description"] = top_products["product_code"].apply(
+                    lambda x: lookup.get(x, {}).get("name", "Unknown")[:50]
+                )
+            except Exception:
+                top_products["description"] = "Unknown"
+
+            with st.expander("Top Product Codes by MDR Count"):
+                st.caption("These are the product codes with the most reports. Search above to select one.")
+                st.dataframe(
+                    top_products.rename(columns={
+                        "product_code": "Product Code",
+                        "count": "MDR Count",
+                        "description": "Description"
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+    except Exception:
+        pass
 
 
 def get_product_analysis_data(conn, product_code: str, start_date, end_date) -> dict:
@@ -187,20 +293,23 @@ def get_product_analysis_data(conn, product_code: str, start_date, end_date) -> 
         ORDER BY period
     """, params).fetchdf()
 
-    # Top brands (from devices table)
-    top_brands = conn.execute(f"""
-        SELECT
-            d.brand_name,
-            d.manufacturer_d_clean,
-            COUNT(*) as count
-        FROM devices d
-        JOIN master_events m ON d.mdr_report_key = m.mdr_report_key
-        WHERE m.product_code = ?{date_filter}
-            AND d.brand_name IS NOT NULL
-        GROUP BY d.brand_name, d.manufacturer_d_clean
-        ORDER BY count DESC
-        LIMIT 20
-    """, params).fetchdf()
+    # Top brands (from devices table if available)
+    try:
+        top_brands = conn.execute(f"""
+            SELECT
+                d.brand_name,
+                d.manufacturer_d_clean,
+                COUNT(*) as count
+            FROM devices d
+            JOIN master_events m ON d.mdr_report_key = m.mdr_report_key
+            WHERE m.product_code = ?{date_filter}
+                AND d.brand_name IS NOT NULL
+            GROUP BY d.brand_name, d.manufacturer_d_clean
+            ORDER BY count DESC
+            LIMIT 20
+        """, params).fetchdf()
+    except Exception:
+        top_brands = pd.DataFrame()
 
     return {
         "summary": summary_dict,
@@ -216,18 +325,18 @@ def render_product_kpis(summary: dict):
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric("Total MDRs", f"{summary['total']:,}")
+        st.metric("Total MDRs", format_number(summary['total']))
 
     with col2:
         death_pct = (summary['deaths'] / summary['total'] * 100) if summary['total'] > 0 else 0
-        st.metric("Deaths", f"{summary['deaths']:,}", delta=f"{death_pct:.1f}%", delta_color="inverse")
+        st.metric("Deaths", format_number(summary['deaths']), delta=f"{death_pct:.1f}%", delta_color="inverse")
 
     with col3:
         injury_pct = (summary['injuries'] / summary['total'] * 100) if summary['total'] > 0 else 0
-        st.metric("Injuries", f"{summary['injuries']:,}", delta=f"{injury_pct:.1f}%", delta_color="inverse")
+        st.metric("Injuries", format_number(summary['injuries']), delta=f"{injury_pct:.1f}%", delta_color="inverse")
 
     with col4:
-        st.metric("Manufacturers", summary['manufacturers'])
+        st.metric("Manufacturers", format_number(summary['manufacturers']))
 
 
 def render_manufacturer_breakdown(df: pd.DataFrame):
@@ -236,13 +345,16 @@ def render_manufacturer_breakdown(df: pd.DataFrame):
         st.info("No manufacturer data available.")
         return
 
+    # Handle NULL manufacturers
+    df = df.copy()
+    df["manufacturer_clean"] = df["manufacturer_clean"].fillna("Unknown")
+
     fig = px.bar(
         df.head(10).sort_values("total", ascending=True),
         x="total",
         y="manufacturer_clean",
         orientation="h",
         color="manufacturer_clean",
-        color_discrete_map=MANUFACTURER_COLORS,
         labels={
             "total": "Total MDRs",
             "manufacturer_clean": "Manufacturer",
@@ -259,23 +371,28 @@ def render_manufacturer_breakdown(df: pd.DataFrame):
 
 
 def render_event_pie(summary: dict):
-    """Render event type pie chart."""
+    """Render event type pie chart using config-driven colors."""
     data = pd.DataFrame([
-        {"event": "Deaths", "count": summary["deaths"], "color": CHART_COLORS["death"]},
-        {"event": "Injuries", "count": summary["injuries"], "color": CHART_COLORS["injury"]},
-        {"event": "Malfunctions", "count": summary["malfunctions"], "color": CHART_COLORS["malfunction"]},
+        {"event": get_event_type_name("D"), "count": summary["deaths"], "color": get_event_type_color("D")},
+        {"event": get_event_type_name("IN"), "count": summary["injuries"], "color": get_event_type_color("IN")},
+        {"event": get_event_type_name("M"), "count": summary["malfunctions"], "color": get_event_type_color("M")},
     ])
+
+    # Filter out zeros
+    data = data[data["count"] > 0]
+
+    if data.empty:
+        st.info("No event type data available.")
+        return
+
+    color_map = {row["event"]: row["color"] for _, row in data.iterrows()}
 
     fig = px.pie(
         data,
         values="count",
         names="event",
         color="event",
-        color_discrete_map={
-            "Deaths": CHART_COLORS["death"],
-            "Injuries": CHART_COLORS["injury"],
-            "Malfunctions": CHART_COLORS["malfunction"],
-        },
+        color_discrete_map=color_map,
         hole=0.4,
     )
 
@@ -299,6 +416,9 @@ def render_product_trend(df: pd.DataFrame):
     df = df.copy()
     df["period"] = pd.to_datetime(df["period"].astype(str))
 
+    # Handle NULL manufacturers
+    df["manufacturer_clean"] = df["manufacturer_clean"].fillna("Unknown")
+
     # Check if multiple manufacturers
     if df["manufacturer_clean"].nunique() > 1:
         fig = px.line(
@@ -306,7 +426,6 @@ def render_product_trend(df: pd.DataFrame):
             x="period",
             y="count",
             color="manufacturer_clean",
-            color_discrete_map=MANUFACTURER_COLORS,
             labels={
                 "period": "Date",
                 "count": "MDR Count",
@@ -324,7 +443,7 @@ def render_product_trend(df: pd.DataFrame):
                 "count": "MDR Count",
             },
         )
-        fig.update_traces(line_color=CHART_COLORS["primary"])
+        fig.update_traces(line_color=CHART_COLORS.get("primary", "#1f77b4"))
 
     fig.update_layout(
         legend=dict(
@@ -347,6 +466,12 @@ def render_sankey_diagram(manufacturer_df: pd.DataFrame, event_df: pd.DataFrame)
         st.info("Insufficient data for Sankey diagram.")
         return
 
+    # Handle NULL manufacturers
+    manufacturer_df = manufacturer_df.copy()
+    event_df = event_df.copy()
+    manufacturer_df["manufacturer_clean"] = manufacturer_df["manufacturer_clean"].fillna("Unknown")
+    event_df["manufacturer_clean"] = event_df["manufacturer_clean"].fillna("Unknown")
+
     # Get top manufacturers
     top_manufacturers = manufacturer_df.head(6)["manufacturer_clean"].tolist()
 
@@ -359,10 +484,14 @@ def render_sankey_diagram(manufacturer_df: pd.DataFrame, event_df: pd.DataFrame)
 
     # Build Sankey data
     manufacturers = event_filtered["manufacturer_clean"].unique().tolist()
-    event_types = event_filtered["event_type"].unique().tolist()
+    event_types = event_filtered["event_type"].dropna().unique().tolist()
 
-    # Create node labels
-    labels = manufacturers + [EVENT_TYPES.get(e, e) for e in event_types]
+    if not event_types:
+        st.info("No event types available.")
+        return
+
+    # Create node labels using config-driven names
+    labels = manufacturers + [get_event_type_name(e) for e in event_types]
 
     # Create source, target, value lists
     source = []
@@ -370,23 +499,23 @@ def render_sankey_diagram(manufacturer_df: pd.DataFrame, event_df: pd.DataFrame)
     value = []
     colors = []
 
-    event_color_map = {
-        "D": CHART_COLORS["death"],
-        "IN": CHART_COLORS["injury"],
-        "M": CHART_COLORS["malfunction"],
-        "O": CHART_COLORS["other"],
-    }
-
     for _, row in event_filtered.iterrows():
         mfr = row["manufacturer_clean"]
         evt = row["event_type"]
         cnt = row["count"]
 
-        if mfr in manufacturers and evt in event_types:
+        if pd.notna(evt) and mfr in manufacturers and evt in event_types:
             source.append(manufacturers.index(mfr))
             target.append(len(manufacturers) + event_types.index(evt))
             value.append(cnt)
-            colors.append(event_color_map.get(evt, CHART_COLORS["other"]))
+            colors.append(get_event_type_color(evt))
+
+    if not source:
+        st.info("No data available for Sankey diagram.")
+        return
+
+    # Use plotly's default colors for manufacturers
+    mfr_colors = px.colors.qualitative.Plotly[:len(manufacturers)]
 
     # Create Sankey diagram
     fig = go.Figure(data=[go.Sankey(
@@ -395,14 +524,13 @@ def render_sankey_diagram(manufacturer_df: pd.DataFrame, event_df: pd.DataFrame)
             thickness=20,
             line=dict(color="black", width=0.5),
             label=labels,
-            color=[MANUFACTURER_COLORS.get(m, "#888") for m in manufacturers] +
-                  [event_color_map.get(e, CHART_COLORS["other"]) for e in event_types],
+            color=list(mfr_colors) + [get_event_type_color(e) for e in event_types],
         ),
         link=dict(
             source=source,
             target=target,
             value=value,
-            color=[c.replace(")", ", 0.4)").replace("rgb", "rgba") if c.startswith("rgb") else c + "66" for c in colors],
+            color=[c + "66" if not c.startswith("rgb") else c.replace(")", ", 0.4)").replace("rgb", "rgba") for c in colors],
         ),
     )])
 
@@ -420,10 +548,11 @@ def render_brand_treemap(df: pd.DataFrame):
         st.info("No brand data available.")
         return
 
-    # Add manufacturer if available
+    # Handle NULLs
+    df = df.copy()
     if "manufacturer_d_clean" in df.columns:
-        df = df.copy()
-        df["label"] = df["brand_name"] + " (" + df["manufacturer_d_clean"].fillna("Unknown") + ")"
+        df["manufacturer_d_clean"] = df["manufacturer_d_clean"].fillna("Unknown")
+        df["label"] = df["brand_name"] + " (" + df["manufacturer_d_clean"] + ")"
     else:
         df["label"] = df["brand_name"]
 

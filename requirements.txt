@@ -6,8 +6,14 @@ duckdb>=1.0.0
 pandas>=2.1.0
 numpy>=1.26.0
 
-# Web framework
+# Web framework (Legacy)
 streamlit>=1.32.0
+
+# FastAPI Backend
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
 
 # Visualization
 plotly>=5.18.0

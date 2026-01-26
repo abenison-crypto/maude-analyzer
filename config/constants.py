@@ -1,23 +1,60 @@
-"""Constants for MAUDE Analyzer application."""
+"""Constants for MAUDE Analyzer application.
+
+This module provides backward-compatible constants that are now loaded from
+YAML configuration files. Import from here for static constants or use
+config_loader for dynamic configuration access.
+
+IMPORTANT: All defaults are EMPTY (all products/manufacturers/event types).
+No product category is prioritized over another.
+"""
+
+from typing import Dict, List, Optional
+
+# Import YAML-based configuration
+try:
+    from config.config_loader import (
+        get_event_types,
+        get_outcome_codes,
+        get_text_type_codes,
+        get_manufacturer_mappings,
+        get_filter_presets,
+        get_product_groups,
+        get_ui_colors,
+        get_table_config,
+        get_data_quality_config,
+        load_data_mappings,
+        load_presets,
+        load_ui_config,
+    )
+    _YAML_AVAILABLE = True
+except ImportError:
+    _YAML_AVAILABLE = False
+
 
 # =============================================================================
-# Product Codes
+# Default Filter Values - ALWAYS ALL DATA
 # =============================================================================
 
-# SCS Product Codes (Legacy - kept as a preset, not default)
-SCS_PRODUCT_CODES = ["GZB", "LGW", "PMP"]
+# Default filter values - EMPTY means ALL data, no filtering
+DEFAULT_FILTER_PRODUCT_CODES: List[str] = []  # Empty = ALL products
+DEFAULT_FILTER_MANUFACTURERS: List[str] = []  # Empty = ALL manufacturers
+DEFAULT_FILTER_EVENT_TYPES: List[str] = []    # Empty = ALL event types
 
-# SCS Related Codes (Leads, related devices)
-SCS_RELATED_CODES = ["GZF", "GZD", "GZE"]
 
-# All SCS-related product codes
-ALL_SCS_CODES = SCS_PRODUCT_CODES + SCS_RELATED_CODES
+# =============================================================================
+# Product Code Helpers
+# =============================================================================
 
-# Default filter values (empty = all products)
-DEFAULT_FILTER_PRODUCT_CODES = []  # Empty means show all products
-DEFAULT_FILTER_MANUFACTURERS = []  # Empty means show all manufacturers
+def get_product_code_description(code: str) -> str:
+    """Get description for a product code."""
+    if _YAML_AVAILABLE:
+        mappings = load_data_mappings()
+        descriptions = mappings.get("product_code_descriptions", {})
+        return descriptions.get(code, code)
+    return PRODUCT_CODE_DESCRIPTIONS.get(code, code)
 
-# Product code descriptions
+
+# Product code descriptions (static fallback, incomplete - use lookup table)
 PRODUCT_CODE_DESCRIPTIONS = {
     "GZB": "Stimulator, Spinal-cord, Totally Implanted For Pain Relief",
     "LGW": "Stimulator, Spinal-cord, Totally Implanted For Pain Relief",
@@ -27,41 +64,62 @@ PRODUCT_CODE_DESCRIPTIONS = {
     "GZE": "Stimulator, Transcranial",
 }
 
-# =============================================================================
-# Manufacturers
-# =============================================================================
-
-# Major SCS Manufacturers (Legacy - kept as a preset, not default)
-SCS_MANUFACTURERS = [
-    "Abbott",
-    "Medtronic",
-    "Boston Scientific",
-    "Nevro",
-    "Stimwave",
-    "Nalu Medical",
-    "Saluda Medical",
-]
 
 # =============================================================================
-# Filter Presets
+# Manufacturer Helpers
 # =============================================================================
 
-# Common filter presets for quick access
+def get_standardized_manufacturer(raw_name: Optional[str]) -> str:
+    """Standardize a manufacturer name using YAML config or fallback."""
+    if not raw_name:
+        return "Unknown"
+    if _YAML_AVAILABLE:
+        mappings = get_manufacturer_mappings()
+        return mappings.standardize(raw_name)
+    # Fallback to static mapping
+    return MANUFACTURER_MAPPINGS.get(raw_name.upper().strip(), raw_name)
+
+
+def get_filter_presets_dict() -> Dict[str, Dict]:
+    """Get filter presets from YAML config or fallback."""
+    if _YAML_AVAILABLE:
+        presets = get_filter_presets()
+        return presets.get_all_presets()
+    return FILTER_PRESETS
+
+
+# =============================================================================
+# Filter Presets - "All Products" is the ONLY default
+# =============================================================================
+
 FILTER_PRESETS = {
     "All Products": {
         "product_codes": [],
         "manufacturers": [],
+        "event_types": [],
         "description": "Show all products and manufacturers in the database",
+        "is_default": True,
     },
-    "SCS Devices": {
+    "Spinal Cord Stimulators": {
         "product_codes": ["GZB", "LGW", "PMP"],
-        "manufacturers": ["Abbott", "Medtronic", "Boston Scientific", "Nevro"],
-        "description": "Spinal Cord Stimulation devices from major manufacturers",
+        "manufacturers": [],
+        "event_types": [],
+        "description": "Spinal Cord Stimulation devices (all manufacturers)",
+        "is_default": False,
     },
-    "Major SCS Manufacturers": {
+    "Cardiac Devices": {
+        "product_codes": ["DXY", "LWS", "NIK"],
+        "manufacturers": [],
+        "event_types": [],
+        "description": "Pacemakers, ICDs, and cardiac leads",
+        "is_default": False,
+    },
+    "Death Events Only": {
         "product_codes": [],
-        "manufacturers": ["Abbott", "Medtronic", "Boston Scientific", "Nevro"],
-        "description": "All products from major SCS device manufacturers",
+        "manufacturers": [],
+        "event_types": ["D"],
+        "description": "Only reports with patient death",
+        "is_default": False,
     },
 }
 
@@ -115,9 +173,34 @@ MANUFACTURER_MAPPINGS = {
     "SALUDA MEDICAL PTY LTD": "Saluda Medical",
 }
 
+
 # =============================================================================
 # Event Types and Codes
 # =============================================================================
+
+def get_event_type_name(code: str) -> str:
+    """Get display name for event type code."""
+    if _YAML_AVAILABLE:
+        event_types = get_event_types()
+        return event_types.get_name(code)
+    return EVENT_TYPES.get(code, code)
+
+
+def get_outcome_code_name(code: str) -> str:
+    """Get display name for outcome code."""
+    if _YAML_AVAILABLE:
+        outcome_codes = get_outcome_codes()
+        return outcome_codes.get_name(code)
+    return OUTCOME_CODES.get(code, code)
+
+
+def get_text_type_name(code: str) -> str:
+    """Get display name for text type code."""
+    if _YAML_AVAILABLE:
+        text_types = get_text_type_codes()
+        return text_types.get_name(code)
+    return TEXT_TYPE_CODES.get(code, code)
+
 
 # Event Types
 EVENT_TYPES = {
@@ -148,26 +231,43 @@ TEXT_TYPE_CODES = {
     "N": "Additional Information",
 }
 
+
 # =============================================================================
 # Colors for Visualizations
 # =============================================================================
 
+def get_manufacturer_color(manufacturer: str) -> str:
+    """Get color for a manufacturer."""
+    if _YAML_AVAILABLE:
+        colors = get_ui_colors()
+        return colors.get_manufacturer_color(manufacturer)
+    return MANUFACTURER_COLORS.get(manufacturer, MANUFACTURER_COLORS.get("Other", "#7f7f7f"))
+
+
+def get_event_type_color(event_type: str) -> str:
+    """Get color for an event type."""
+    if _YAML_AVAILABLE:
+        colors = get_ui_colors()
+        return colors.get_event_type_color(event_type)
+    return EVENT_TYPE_COLORS.get(event_type, EVENT_TYPE_COLORS.get("Other", "#7f7f7f"))
+
+
 MANUFACTURER_COLORS = {
-    "Abbott": "#1f77b4",  # Blue
-    "Medtronic": "#ff7f0e",  # Orange
-    "Boston Scientific": "#2ca02c",  # Green
-    "Nevro": "#d62728",  # Red
-    "Stimwave": "#9467bd",  # Purple
-    "Nalu Medical": "#8c564b",  # Brown
-    "Saluda Medical": "#e377c2",  # Pink
-    "Other": "#7f7f7f",  # Gray
+    "Abbott": "#1f77b4",
+    "Medtronic": "#ff7f0e",
+    "Boston Scientific": "#2ca02c",
+    "Nevro": "#d62728",
+    "Stimwave": "#9467bd",
+    "Nalu Medical": "#8c564b",
+    "Saluda Medical": "#e377c2",
+    "Other": "#7f7f7f",
 }
 
 EVENT_TYPE_COLORS = {
-    "Death": "#d62728",  # Red
-    "Injury": "#ff7f0e",  # Orange
-    "Malfunction": "#1f77b4",  # Blue
-    "Other": "#7f7f7f",  # Gray
+    "Death": "#d62728",
+    "Injury": "#ff7f0e",
+    "Malfunction": "#1f77b4",
+    "Other": "#7f7f7f",
 }
 
 SEQUENTIAL_PALETTES = {
@@ -178,21 +278,20 @@ SEQUENTIAL_PALETTES = {
     "heatmap": "RdYlBu_r",
 }
 
-# Simple color scheme for charts
 CHART_COLORS = {
-    "primary": "#1f77b4",  # Blue
-    "secondary": "#2ca02c",  # Green
-    "death": "#d62728",  # Red
-    "injury": "#ff7f0e",  # Orange
-    "malfunction": "#1f77b4",  # Blue
-    "other": "#7f7f7f",  # Gray
+    "primary": "#1f77b4",
+    "secondary": "#2ca02c",
+    "death": "#d62728",
+    "injury": "#ff7f0e",
+    "malfunction": "#1f77b4",
+    "other": "#7f7f7f",
 }
+
 
 # =============================================================================
 # File Patterns
 # =============================================================================
 
-# FDA MAUDE File Patterns (regex)
 MAUDE_FILE_PATTERNS = {
     "master": r"mdrfoi.*\.txt",
     "device": r"foidev.*\.txt",
@@ -201,10 +300,6 @@ MAUDE_FILE_PATTERNS = {
     "problem": r"foidevproblem.*\.txt",
 }
 
-# FDA Weekly Incremental File Patterns
-# ADD files: New records added during the week
-# CHANGE files: Updates/corrections to existing records
-# Released on Thursdays
 MAUDE_INCREMENTAL_PATTERNS = {
     "master": {
         "add": r"mdrfoiAdd.*\.txt",
@@ -212,7 +307,7 @@ MAUDE_INCREMENTAL_PATTERNS = {
     },
     "device": {
         "add": r"foidevAdd.*\.txt",
-        "change": None,  # Device doesn't have change files
+        "change": None,
     },
     "patient": {
         "add": r"patientAdd.*\.txt",
@@ -220,7 +315,7 @@ MAUDE_INCREMENTAL_PATTERNS = {
     },
     "text": {
         "add": r"foitextAdd.*\.txt",
-        "change": None,  # Text doesn't have change files
+        "change": None,
     },
     "problem": {
         "add": None,
@@ -228,7 +323,6 @@ MAUDE_INCREMENTAL_PATTERNS = {
     },
 }
 
-# FDA File Categories
 FILE_CATEGORIES = {
     "current": "Current year files, updated weekly (e.g., mdrfoi.zip)",
     "add": "Weekly addition files with new records (e.g., mdrfoiAdd.zip)",
@@ -236,19 +330,20 @@ FILE_CATEGORIES = {
     "annual": "Annual archive files with historical data (e.g., mdrfoithru2024.zip)",
 }
 
+
 # =============================================================================
 # Date Formats
 # =============================================================================
 
-# Date formats to try when parsing MAUDE data
 DATE_FORMATS = [
-    "%m/%d/%Y",  # 01/15/2024
-    "%Y-%m-%d",  # 2024-01-15
-    "%Y%m%d",  # 20240115
-    "%d-%b-%Y",  # 15-Jan-2024
-    "%B %d, %Y",  # January 15, 2024
-    "%m-%d-%Y",  # 01-15-2024
+    "%m/%d/%Y",
+    "%Y-%m-%d",
+    "%Y%m%d",
+    "%d-%b-%Y",
+    "%B %d, %Y",
+    "%m-%d-%Y",
 ]
+
 
 # =============================================================================
 # Time Aggregations
@@ -282,6 +377,7 @@ TIME_AGGREGATIONS = {
     },
 }
 
+
 # =============================================================================
 # Search Operators
 # =============================================================================
@@ -300,6 +396,7 @@ SEARCH_OPERATORS = {
     "is_null": "IS NULL",
     "is_not_null": "IS NOT NULL",
 }
+
 
 # =============================================================================
 # Export Configuration
@@ -354,7 +451,7 @@ EXCEL_EXPORT_CONFIG = {
 
 CHART_EXPORT_CONFIG = {
     "png": {
-        "scale": 2,  # 2x resolution for clarity
+        "scale": 2,
         "width": 1200,
         "height": 800,
     },
