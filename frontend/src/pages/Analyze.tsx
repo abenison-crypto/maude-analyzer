@@ -2,13 +2,17 @@ import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import FilterBar from '../components/FilterBar'
 import TrendChart from '../components/TrendChart'
-import { useManufacturerComparison, useEventTypeDistribution } from '../hooks/useAnalytics'
+import SignalsTable from '../components/SignalsTable'
+import TextFrequency from '../components/TextFrequency'
+import { useManufacturerComparison, useEventTypeDistribution, useSafetySignals, useTextFrequency } from '../hooks/useAnalytics'
 import { useManufacturers } from '../hooks/useEvents'
 
 const TABS = [
   { id: 'trends', label: 'Trends' },
   { id: 'compare', label: 'Compare' },
   { id: 'distribution', label: 'Distribution' },
+  { id: 'signals', label: 'Signals' },
+  { id: 'text', label: 'Text' },
 ]
 
 const COLORS = ['#EF4444', '#F97316', '#EAB308', '#6B7280', '#3B82F6']
@@ -18,10 +22,13 @@ export default function AnalyzePage() {
   const [groupBy, setGroupBy] = useState<'month' | 'year'>('year')
   const [selectedMfrs, setSelectedMfrs] = useState<string[]>([])
   const [mfrSearch, setMfrSearch] = useState('')
+  const [lookbackMonths, setLookbackMonths] = useState(12)
 
   const { data: manufacturers } = useManufacturers(mfrSearch)
   const { data: comparison, isLoading: comparisonLoading } = useManufacturerComparison(selectedMfrs)
   const { data: distribution, isLoading: distributionLoading } = useEventTypeDistribution()
+  const { data: signalsData, isLoading: signalsLoading } = useSafetySignals(lookbackMonths)
+  const { data: textData, isLoading: textLoading } = useTextFrequency()
 
   const handleAddMfr = (name: string) => {
     if (!selectedMfrs.includes(name) && selectedMfrs.length < 10) {
@@ -228,6 +235,32 @@ export default function AnalyzePage() {
               )}
             </div>
           </div>
+        )}
+
+        {activeTab === 'signals' && (
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <select
+                value={lookbackMonths}
+                onChange={(e) => setLookbackMonths(Number(e.target.value))}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+              >
+                <option value={6}>Last 6 months</option>
+                <option value={12}>Last 12 months</option>
+                <option value={24}>Last 24 months</option>
+                <option value={36}>Last 36 months</option>
+              </select>
+            </div>
+            <SignalsTable
+              signals={signalsData?.signals || []}
+              isLoading={signalsLoading}
+              lookbackMonths={signalsData?.lookback_months || lookbackMonths}
+            />
+          </div>
+        )}
+
+        {activeTab === 'text' && (
+          <TextFrequency data={textData || []} isLoading={textLoading} />
         )}
       </div>
     </div>

@@ -7,6 +7,13 @@ from datetime import date
 import io
 import csv
 
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    EXCEL_AVAILABLE = True
+except ImportError:
+    EXCEL_AVAILABLE = False
+
 from api.services.queries import QueryService
 from api.models.schemas import (
     EventListResponse,
@@ -104,10 +111,10 @@ async def export_events(
     date_from: Optional[date] = Query(None, description="Start date"),
     date_to: Optional[date] = Query(None, description="End date"),
     search_text: Optional[str] = Query(None, description="Search text"),
-    format: str = Query("csv", description="Export format (csv)"),
+    format: str = Query("csv", description="Export format (csv or xlsx)"),
     max_records: int = Query(10000, ge=1, le=100000, description="Maximum records to export"),
 ):
-    """Export events to CSV."""
+    """Export events to CSV or Excel format."""
     query_service = QueryService()
 
     mfr_list = manufacturers.split(",") if manufacturers else None
@@ -127,18 +134,63 @@ async def export_events(
     )
 
     events = result["events"]
-
-    # Create CSV
-    output = io.StringIO()
-    writer = csv.writer(output)
-
-    # Header
-    writer.writerow([
+    headers = [
         "MDR Report Key", "Report Number", "Date Received", "Date of Event",
         "Event Type", "Manufacturer", "Product Code"
-    ])
+    ]
 
-    # Data
+    if format == "xlsx":
+        if not EXCEL_AVAILABLE:
+            raise HTTPException(status_code=400, detail="Excel export not available (openpyxl not installed)")
+
+        # Create Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "MAUDE Events"
+
+        # Style header row
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="3B82F6", end_color="3B82F6", fill_type="solid")
+
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+
+        # Add data rows
+        for row_idx, event in enumerate(events, 2):
+            ws.cell(row=row_idx, column=1, value=event["mdr_report_key"])
+            ws.cell(row=row_idx, column=2, value=event["report_number"])
+            ws.cell(row=row_idx, column=3, value=event["date_received"])
+            ws.cell(row=row_idx, column=4, value=event["date_of_event"])
+            ws.cell(row=row_idx, column=5, value=event["event_type"])
+            ws.cell(row=row_idx, column=6, value=event["manufacturer"])
+            ws.cell(row=row_idx, column=7, value=event["product_code"])
+
+        # Adjust column widths
+        column_widths = [15, 20, 15, 15, 12, 50, 12]
+        for col_idx, width in enumerate(column_widths, 1):
+            ws.column_dimensions[chr(64 + col_idx)].width = width
+
+        # Save to bytes
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename=maude_events_{date.today().isoformat()}.xlsx"
+            },
+        )
+
+    # Default: CSV format
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+
     for event in events:
         writer.writerow([
             event["mdr_report_key"],

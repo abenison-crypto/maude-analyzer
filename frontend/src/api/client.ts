@@ -213,4 +213,49 @@ export const api = {
     }>
   > =>
     fetchJSON(`${API_BASE}/admin/history?limit=${limit}`),
+
+  // Safety Signals
+  getSafetySignals: (params: {
+    manufacturers?: string[]
+    productCodes?: string[]
+    lookbackMonths?: number
+    minThreshold?: number
+  } = {}): Promise<{
+    lookback_months: number
+    signals: Array<{
+      manufacturer: string
+      avg_monthly: number
+      std_monthly: number
+      total_events: number
+      total_deaths: number
+      latest_month: number
+      z_score: number
+      signal_type: 'high' | 'elevated' | 'normal'
+    }>
+  }> => {
+    const urlParams = new URLSearchParams()
+    if (params.manufacturers?.length) urlParams.set('manufacturers', params.manufacturers.join(','))
+    if (params.productCodes?.length) urlParams.set('product_codes', params.productCodes.join(','))
+    if (params.lookbackMonths) urlParams.set('lookback_months', String(params.lookbackMonths))
+    if (params.minThreshold) urlParams.set('min_threshold', String(params.minThreshold))
+    return fetchJSON(`${API_BASE}/analytics/signals?${urlParams}`)
+  },
+
+  // Text Frequency
+  getTextFrequency: (filters: Omit<EventFilters, 'page' | 'pageSize'> & {
+    minWordLength?: number
+    topN?: number
+    sampleSize?: number
+  } = {}): Promise<Array<{ term: string; count: number; percentage: number }>> => {
+    const params = new URLSearchParams()
+    if (filters.manufacturers?.length) params.set('manufacturers', filters.manufacturers.join(','))
+    if (filters.productCodes?.length) params.set('product_codes', filters.productCodes.join(','))
+    if (filters.eventTypes?.length) params.set('event_types', filters.eventTypes.join(','))
+    if (filters.dateFrom) params.set('date_from', filters.dateFrom)
+    if (filters.dateTo) params.set('date_to', filters.dateTo)
+    if (filters.minWordLength) params.set('min_word_length', String(filters.minWordLength))
+    if (filters.topN) params.set('top_n', String(filters.topN))
+    if (filters.sampleSize) params.set('sample_size', String(filters.sampleSize))
+    return fetchJSON(`${API_BASE}/analytics/text-frequency?${params}`)
+  },
 }

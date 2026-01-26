@@ -72,3 +72,37 @@ export function useIngestionHistory() {
     staleTime: 60 * 1000,
   })
 }
+
+export function useSafetySignals(lookbackMonths = 12, minThreshold = 10) {
+  const { filters } = useFilters()
+
+  return useQuery({
+    queryKey: ['safetySignals', filters.manufacturers, filters.productCodes, lookbackMonths, minThreshold],
+    queryFn: () =>
+      api.getSafetySignals({
+        manufacturers: filters.manufacturers.length ? filters.manufacturers : undefined,
+        productCodes: filters.productCodes.length ? filters.productCodes : undefined,
+        lookbackMonths,
+        minThreshold,
+      }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+}
+
+export function useTextFrequency(sampleSize = 1000) {
+  const { filters } = useFilters()
+
+  return useQuery({
+    queryKey: ['textFrequency', filters.manufacturers, filters.productCodes, filters.eventTypes, filters.dateFrom, filters.dateTo, sampleSize],
+    queryFn: () =>
+      api.getTextFrequency({
+        manufacturers: filters.manufacturers.length ? filters.manufacturers : undefined,
+        productCodes: filters.productCodes.length ? filters.productCodes : undefined,
+        eventTypes: filters.eventTypes.length ? filters.eventTypes : undefined,
+        dateFrom: filters.dateFrom || undefined,
+        dateTo: filters.dateTo || undefined,
+        sampleSize,
+      }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+}

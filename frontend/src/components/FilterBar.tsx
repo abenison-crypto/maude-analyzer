@@ -14,7 +14,7 @@ export default function FilterBar() {
   const {
     filters,
     setManufacturers,
-    setProductCodes,
+    setProductCodes: _setProductCodes,
     setEventTypes,
     setDateRange,
     setSearchText,
@@ -26,9 +26,9 @@ export default function FilterBar() {
   const [showMfrDropdown, setShowMfrDropdown] = useState(false)
   const { data: manufacturers } = useManufacturers(mfrSearch)
 
-  const [productSearch, setProductSearch] = useState('')
-  const [showProductDropdown, setShowProductDropdown] = useState(false)
-  const { data: productCodes } = useProductCodes(productSearch)
+  // Product code search - currently unused but kept for future implementation
+  const [_productSearch, _setProductSearch] = useState('')
+  useProductCodes('')  // Prefetch product codes
 
   const handleMfrSelect = (name: string) => {
     if (!filters.manufacturers.includes(name)) {
@@ -40,18 +40,6 @@ export default function FilterBar() {
 
   const removeMfr = (name: string) => {
     setManufacturers(filters.manufacturers.filter((m) => m !== name))
-  }
-
-  const handleProductSelect = (code: string) => {
-    if (!filters.productCodes.includes(code)) {
-      setProductCodes([...filters.productCodes, code])
-    }
-    setProductSearch('')
-    setShowProductDropdown(false)
-  }
-
-  const removeProduct = (code: string) => {
-    setProductCodes(filters.productCodes.filter((c) => c !== code))
   }
 
   const toggleEventType = (type: string) => {

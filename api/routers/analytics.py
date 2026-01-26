@@ -78,12 +78,41 @@ async def detect_signals(
     """Detect potential safety signals based on event patterns.
 
     Identifies manufacturers/products with unusual increases in adverse events.
+    Uses available data with manufacturer information (data with manufacturer_clean populated).
     """
     db = get_db()
 
-    # Build base filter
-    conditions = ["date_received >= CURRENT_DATE - INTERVAL ? MONTH"]
-    params = [lookback_months]
+    # Find date range where manufacturer_clean data is substantially available
+    date_range_query = """
+        SELECT MIN(date_received), MAX(date_received)
+        FROM master_events
+        WHERE manufacturer_clean IS NOT NULL
+        AND date_received >= DATE '2010-01-01'
+    """
+    date_result = db.fetch_all(date_range_query)
+    if not date_result or not date_result[0][0]:
+        return {"lookback_months": lookback_months, "signals": [], "data_note": "No manufacturer data available"}
+
+    min_date, max_date = date_result[0]
+
+    # Use end of 2019 as reference if max_date is in a sparse period (2020+)
+    # This is a workaround for incomplete manufacturer_clean data in recent years
+    reference_date = max_date
+    if max_date.year >= 2020:
+        # Check if there's better data in 2019
+        check_query = """
+            SELECT MAX(date_received) FROM master_events
+            WHERE manufacturer_clean IS NOT NULL AND EXTRACT(YEAR FROM date_received) = 2019
+        """
+        check_result = db.fetch_all(check_query)
+        if check_result and check_result[0][0]:
+            reference_date = check_result[0][0]
+
+    # Build base filter using the reference date
+    start_date = f"DATE '{reference_date}' - INTERVAL '{lookback_months}' MONTH"
+    conditions = [f"date_received >= {start_date}"]
+    conditions.append(f"date_received <= DATE '{reference_date}'")
+    params = []
 
     if manufacturers:
         mfr_list = manufacturers.split(",")
@@ -99,7 +128,7 @@ async def detect_signals(
 
     where_clause = " AND ".join(conditions)
 
-    # Get monthly trends by manufacturer
+    # Get monthly trends by manufacturer with latest month calculation
     query = f"""
         WITH monthly_counts AS (
             SELECT
@@ -112,25 +141,39 @@ async def detect_signals(
             AND manufacturer_clean IS NOT NULL
             GROUP BY manufacturer_clean, DATE_TRUNC('month', date_received)
         ),
-        manufacturer_stats AS (
+        latest_months AS (
             SELECT
                 manufacturer_clean,
-                AVG(event_count) as avg_events,
-                STDDEV(event_count) as std_events,
-                SUM(event_count) as total_events,
-                SUM(death_count) as total_deaths,
-                MAX(event_count) as max_month_events,
-                (SELECT event_count FROM monthly_counts mc2
-                 WHERE mc2.manufacturer_clean = monthly_counts.manufacturer_clean
-                 ORDER BY month DESC LIMIT 1) as latest_month_events
+                MAX(month) as max_month
             FROM monthly_counts
             GROUP BY manufacturer_clean
-            HAVING SUM(event_count) >= ?
+        ),
+        latest_counts AS (
+            SELECT
+                mc.manufacturer_clean,
+                mc.event_count as latest_month_events
+            FROM monthly_counts mc
+            JOIN latest_months lm ON mc.manufacturer_clean = lm.manufacturer_clean
+                AND mc.month = lm.max_month
+        ),
+        manufacturer_stats AS (
+            SELECT
+                mc.manufacturer_clean,
+                AVG(mc.event_count) as avg_events,
+                STDDEV_SAMP(mc.event_count) as std_events,
+                SUM(mc.event_count) as total_events,
+                SUM(mc.death_count) as total_deaths,
+                MAX(mc.event_count) as max_month_events,
+                lc.latest_month_events
+            FROM monthly_counts mc
+            JOIN latest_counts lc ON mc.manufacturer_clean = lc.manufacturer_clean
+            GROUP BY mc.manufacturer_clean, lc.latest_month_events
+            HAVING SUM(mc.event_count) >= ?
         )
         SELECT
             manufacturer_clean,
             ROUND(avg_events, 1) as avg_monthly,
-            ROUND(std_events, 1) as std_monthly,
+            ROUND(COALESCE(std_events, 0), 1) as std_monthly,
             total_events,
             total_deaths,
             latest_month_events,
@@ -149,7 +192,7 @@ async def detect_signals(
 
     signals = []
     for row in results:
-        z_score = row[6] if row[6] else 0
+        z_score = float(row[6]) if row[6] else 0.0
         if z_score > 2:
             signal_type = "high"
         elif z_score > 1:
@@ -159,11 +202,11 @@ async def detect_signals(
 
         signals.append({
             "manufacturer": row[0],
-            "avg_monthly": row[1],
-            "std_monthly": row[2],
-            "total_events": row[3],
-            "total_deaths": row[4],
-            "latest_month": row[5],
+            "avg_monthly": float(row[1]) if row[1] else 0.0,
+            "std_monthly": float(row[2]) if row[2] else 0.0,
+            "total_events": int(row[3]) if row[3] else 0,
+            "total_deaths": int(row[4]) if row[4] else 0,
+            "latest_month": int(row[5]) if row[5] else 0,
             "z_score": z_score,
             "signal_type": signal_type,
         })

@@ -1,4 +1,5 @@
-import { Download } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Download, ChevronDown } from 'lucide-react'
 import FilterBar from '../components/FilterBar'
 import EventsTable from '../components/EventsTable'
 import { useFilters } from '../hooks/useFilters'
@@ -7,8 +8,20 @@ import { useEventStats } from '../hooks/useEvents'
 export default function ExplorePage() {
   const { filters, hasActiveFilters } = useFilters()
   const { data: stats } = useEventStats()
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
 
-  const handleExport = () => {
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(event.target as Node)) {
+        setShowExportMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleExport = (format: 'csv' | 'xlsx') => {
     const params = new URLSearchParams()
     if (filters.manufacturers.length) params.set('manufacturers', filters.manufacturers.join(','))
     if (filters.productCodes.length) params.set('product_codes', filters.productCodes.join(','))
@@ -16,8 +29,10 @@ export default function ExplorePage() {
     if (filters.dateFrom) params.set('date_from', filters.dateFrom)
     if (filters.dateTo) params.set('date_to', filters.dateTo)
     if (filters.searchText) params.set('search_text', filters.searchText)
+    params.set('format', format)
 
     window.open(`/api/events/export?${params.toString()}`, '_blank')
+    setShowExportMenu(false)
   }
 
   return (
@@ -30,13 +45,32 @@ export default function ExplorePage() {
             Search and browse FDA MAUDE adverse event reports
           </p>
         </div>
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-        >
-          <Download className="w-4 h-4" />
-          Export CSV
-        </button>
+        <div className="relative" ref={exportRef}>
+          <button
+            onClick={() => setShowExportMenu(!showExportMenu)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Export
+            <ChevronDown className="w-4 h-4" />
+          </button>
+          {showExportMenu && (
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
+              <button
+                onClick={() => handleExport('csv')}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-t-md"
+              >
+                Export as CSV
+              </button>
+              <button
+                onClick={() => handleExport('xlsx')}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-b-md"
+              >
+                Export as Excel (.xlsx)
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
