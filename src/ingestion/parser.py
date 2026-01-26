@@ -1,6 +1,13 @@
-"""Parse FDA MAUDE data files with dynamic schema detection."""
+"""Parse FDA MAUDE data files with dynamic schema detection.
+
+Enhanced with:
+- Year-based schema detection for historical files
+- Automatic encoding detection for older files
+- Support for schema variations across FDA MAUDE file types
+"""
 
 import csv
+import chardet
 import re
 from pathlib import Path
 from typing import Generator, Dict, List, Optional, Any, Tuple
@@ -32,6 +39,17 @@ from config.column_mappings import (
     get_db_column_name,
     map_record_columns,
 )
+
+# Import historical schema detection functions
+try:
+    from config.schemas import (
+        get_device_schema,
+        get_master_schema,
+        get_text_schema,
+    )
+    HAS_HISTORICAL_SCHEMAS = True
+except ImportError:
+    HAS_HISTORICAL_SCHEMAS = False
 
 logger = get_logger("parser")
 
@@ -113,6 +131,145 @@ FILE_COLUMNS = {
 }
 
 
+# =============================================================================
+# YEAR EXTRACTION FROM FILENAME
+# =============================================================================
+
+def extract_year_from_filename(filename: str) -> Optional[int]:
+    """
+    Extract year from FDA MAUDE filename.
+
+    Patterns handled:
+    - device2020.txt, device2025.txt
+    - foidev2019.txt, foidevthru2023.txt
+    - mdrfoi2024.txt, mdrfoithru2023.txt
+    - patient2020.txt
+    - foitext2020.txt
+    - mdr84.txt through mdr97.txt (DEN legacy)
+
+    Args:
+        filename: Name of the file (case-insensitive).
+
+    Returns:
+        Extracted year or None if not found.
+    """
+    name = filename.lower()
+
+    # Pattern 1: 4-digit year (2019, 2020, 2023, etc.)
+    match = re.search(r'(19|20)\d{2}', name)
+    if match:
+        return int(match.group())
+
+    # Pattern 2: 2-digit year for DEN files (84-97)
+    if name.startswith('mdr') and not name.startswith('mdrfoi'):
+        match = re.search(r'mdr(\d{2})\.', name)
+        if match:
+            year_2digit = int(match.group(1))
+            if 84 <= year_2digit <= 97:
+                return 1900 + year_2digit
+
+    return None
+
+
+def detect_encoding(filepath: Path, sample_size: int = 10000) -> str:
+    """
+    Detect file encoding by sampling the file content.
+
+    Most FDA files use latin-1, but some older files may use different encodings.
+
+    Args:
+        filepath: Path to the file.
+        sample_size: Number of bytes to sample for detection.
+
+    Returns:
+        Detected encoding (defaults to 'latin-1' if unsure).
+    """
+    try:
+        with open(filepath, 'rb') as f:
+            raw_data = f.read(sample_size)
+
+        # Try chardet for automatic detection
+        try:
+            result = chardet.detect(raw_data)
+            if result and result.get('encoding'):
+                confidence = result.get('confidence', 0)
+                encoding = result['encoding'].lower()
+
+                # High confidence detection
+                if confidence > 0.9:
+                    # Map common encodings to their standard names
+                    encoding_map = {
+                        'iso-8859-1': 'latin-1',
+                        'windows-1252': 'cp1252',
+                        'ascii': 'ascii',
+                    }
+                    return encoding_map.get(encoding, encoding)
+        except Exception:
+            pass
+
+        # Try to detect by examining content
+        # Check for UTF-8 BOM
+        if raw_data.startswith(b'\xef\xbb\xbf'):
+            return 'utf-8-sig'
+
+        # Check for UTF-16 BOM
+        if raw_data.startswith(b'\xff\xfe') or raw_data.startswith(b'\xfe\xff'):
+            return 'utf-16'
+
+        # Default to latin-1 (handles most FDA files)
+        return 'latin-1'
+
+    except Exception as e:
+        logger.warning(f"Error detecting encoding for {filepath}: {e}")
+        return 'latin-1'
+
+
+def get_schema_for_file(
+    filepath: Path,
+    file_type: str,
+    column_count: Optional[int] = None,
+) -> Tuple[List[str], str, str]:
+    """
+    Get appropriate schema columns, encoding, and notes for a file.
+
+    Uses historical schema definitions when available to handle
+    schema evolution across different years of FDA MAUDE data.
+
+    Args:
+        filepath: Path to the file.
+        file_type: Type of file (master, device, patient, text, etc.).
+        column_count: Detected column count from file header.
+
+    Returns:
+        Tuple of (columns, encoding, notes).
+    """
+    year = extract_year_from_filename(filepath.name)
+    encoding = 'latin-1'  # Default
+    notes = ""
+
+    # Use historical schemas if available
+    if HAS_HISTORICAL_SCHEMAS:
+        if file_type == 'device':
+            schema = get_device_schema(filepath.name, year, column_count)
+            return schema.columns, schema.encoding, schema.notes
+        elif file_type == 'master':
+            schema = get_master_schema(filepath.name, year, column_count)
+            return schema.columns, schema.encoding, schema.notes
+        elif file_type == 'text':
+            schema = get_text_schema(filepath.name, year, column_count)
+            return schema.columns, schema.encoding, schema.notes
+
+    # Fall back to standard schema detection
+    columns = get_fda_columns(file_type, column_count)
+
+    # Detect encoding for older files
+    if year and year < 2000:
+        encoding = detect_encoding(filepath)
+        notes = f"Pre-2000 file, detected encoding: {encoding}"
+
+    return columns, encoding, notes
+
+
 @dataclass
 class SchemaInfo:
     """Information about detected file schema."""
@@ -122,6 +279,9 @@ class SchemaInfo:
     file_type: str
     is_valid: bool = True
     validation_message: str = ""
+    encoding: str = "latin-1"  # Detected file encoding
+    year: Optional[int] = None  # Extracted year from filename
+    schema_notes: str = ""  # Notes about the schema version
 
 
 @dataclass
@@ -207,6 +367,11 @@ class MAUDEParser:
         """
         Read the first line of a file and detect its column structure.
 
+        Enhanced with:
+        - Year-based schema detection for historical files
+        - Automatic encoding detection for older files
+        - Support for schema variations across FDA MAUDE file types
+
         Args:
             filepath: Path to the file.
             file_type: Known file type (auto-detected if None).
@@ -220,6 +385,12 @@ class MAUDEParser:
         if file_type is None:
             raise ValueError(f"Could not detect file type for: {filepath}")
 
+        # Extract year from filename for schema selection
+        year = extract_year_from_filename(filepath.name)
+
+        # Detect encoding (especially important for older files)
+        detected_encoding = detect_encoding(filepath) if year and year < 2005 else self.encoding
+
         # Check if this is a headerless file
         if is_headerless_file(file_type):
             fda_columns = get_fda_columns(file_type)
@@ -230,15 +401,18 @@ class MAUDEParser:
                 file_type=file_type,
                 is_valid=True,
                 validation_message="Using predefined columns (headerless file)",
+                encoding=detected_encoding,
+                year=year,
             )
 
         # Read the first line to get header
         try:
-            with open(filepath, "r", encoding=self.encoding, errors="replace") as f:
+            with open(filepath, "r", encoding=detected_encoding, errors="replace") as f:
                 first_line = f.readline().strip()
 
             # Split by pipe delimiter
             header_parts = first_line.split("|")
+            detected_count = len(header_parts)
 
             # Check if this looks like a header row
             if self._is_header_row(header_parts, file_type):
@@ -247,13 +421,16 @@ class MAUDEParser:
                 has_header = True
             else:
                 # No header - use predefined columns based on detected column count
-                # This handles cases like master files with 84 vs 86 columns
-                detected_count = len(header_parts)
-                columns = get_columns_for_count(file_type, detected_count)
+                # Try historical schema detection first
+                columns, schema_encoding, schema_notes = get_schema_for_file(
+                    filepath, file_type, detected_count
+                )
                 has_header = False
-                logger.warning(
-                    f"File {filepath.name} appears to have no header. "
-                    f"Using predefined columns for {file_type}."
+                if schema_encoding != detected_encoding:
+                    detected_encoding = schema_encoding
+                logger.info(
+                    f"File {filepath.name}: Using schema for year {year or 'unknown'}, "
+                    f"{detected_count} columns detected. {schema_notes}"
                 )
 
             # Validate schema
@@ -266,6 +443,9 @@ class MAUDEParser:
                 file_type=file_type,
                 is_valid=is_valid,
                 validation_message=message,
+                encoding=detected_encoding,
+                year=year,
+                schema_notes=f"Year: {year}, Encoding: {detected_encoding}" if year else "",
             )
 
         except Exception as e:
@@ -279,6 +459,8 @@ class MAUDEParser:
                 file_type=file_type,
                 is_valid=False,
                 validation_message=f"Error detecting schema: {e}",
+                encoding=detected_encoding,
+                year=year,
             )
 
     def _is_header_row(self, parts: List[str], file_type: str) -> bool:
@@ -388,7 +570,9 @@ class MAUDEParser:
                 filter_column = "DEVICE_REPORT_PRODUCT_CODE"
 
         try:
-            with open(filepath, "r", encoding=self.encoding, errors="replace") as f:
+            # Use detected encoding from schema (important for older files)
+            file_encoding = schema.encoding if schema else self.encoding
+            with open(filepath, "r", encoding=file_encoding, errors="replace") as f:
                 reader = csv.reader(f, delimiter="|", quotechar='"')
 
                 for line_num, row in enumerate(reader, 1):

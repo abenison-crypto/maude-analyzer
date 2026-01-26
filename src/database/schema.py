@@ -21,7 +21,30 @@ from config.logging_config import get_logger
 logger = get_logger("schema")
 
 # Schema version for migrations
-SCHEMA_VERSION = "2.0"
+SCHEMA_VERSION = "2.1"  # Added CHECK constraints and documentation
+
+# =============================================================================
+# CONSTRAINT NOTES
+# =============================================================================
+# DuckDB does not enforce foreign key constraints but allows them for
+# documentation and query optimization hints.
+#
+# Key Relationships:
+# - devices.mdr_report_key -> master_events.mdr_report_key
+# - patients.mdr_report_key -> master_events.mdr_report_key
+# - mdr_text.mdr_report_key -> master_events.mdr_report_key
+# - device_problems.mdr_report_key -> master_events.mdr_report_key
+# - patient_problems.mdr_report_key -> master_events.mdr_report_key
+#
+# Valid Flag Values (Y/N or specific codes):
+# - adverse_event_flag: Y/N
+# - product_problem_flag: Y/N
+# - health_professional: Y/N
+# - single_use_flag: Y/N
+# - implant_flag: Y/N
+# - date_removed_flag: Y/N
+# - event_type: D (Death), IN (Injury), M (Malfunction), O (Other), * (Unknown)
+# =============================================================================
 
 # =============================================================================
 # MASTER EVENTS TABLE (86 FDA columns + derived fields)
@@ -170,12 +193,23 @@ CREATE TABLE IF NOT EXISTS master_events (
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    source_file VARCHAR
+    source_file VARCHAR,
+
+    -- CHECK constraints for data validation
+    CONSTRAINT chk_master_adverse_flag CHECK (adverse_event_flag IS NULL OR adverse_event_flag IN ('Y', 'N', '')),
+    CONSTRAINT chk_master_product_flag CHECK (product_problem_flag IS NULL OR product_problem_flag IN ('Y', 'N', '')),
+    CONSTRAINT chk_master_health_prof CHECK (health_professional IS NULL OR health_professional IN ('Y', 'N', '')),
+    CONSTRAINT chk_master_single_use CHECK (single_use_flag IS NULL OR single_use_flag IN ('Y', 'N', '')),
+    CONSTRAINT chk_master_event_year CHECK (event_year IS NULL OR (event_year >= 1980 AND event_year <= 2100)),
+    CONSTRAINT chk_master_received_year CHECK (received_year IS NULL OR (received_year >= 1980 AND received_year <= 2100)),
+    CONSTRAINT chk_master_devices_count CHECK (number_devices_in_event IS NULL OR number_devices_in_event >= 0),
+    CONSTRAINT chk_master_patients_count CHECK (number_patients_in_event IS NULL OR number_patients_in_event >= 0)
 )
 """
 
 # =============================================================================
 # DEVICES TABLE (28 FDA columns + derived fields)
+# Informational FK: mdr_report_key -> master_events.mdr_report_key
 # =============================================================================
 
 CREATE_DEVICES = """
@@ -231,12 +265,18 @@ CREATE TABLE IF NOT EXISTS devices (
 
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    source_file VARCHAR
+    source_file VARCHAR,
+
+    -- CHECK constraints for data validation
+    CONSTRAINT chk_devices_implant_flag CHECK (implant_flag IS NULL OR implant_flag IN ('Y', 'N', '')),
+    CONSTRAINT chk_devices_removed_flag CHECK (date_removed_flag IS NULL OR date_removed_flag IN ('Y', 'N', '')),
+    CONSTRAINT chk_devices_seq_num CHECK (device_sequence_number IS NULL OR device_sequence_number > 0)
 )
 """
 
 # =============================================================================
 # PATIENTS TABLE (10 FDA columns + derived/outcome fields)
+# Informational FK: mdr_report_key -> master_events.mdr_report_key
 # =============================================================================
 
 CREATE_PATIENTS = """
@@ -282,12 +322,18 @@ CREATE TABLE IF NOT EXISTS patients (
 
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    source_file VARCHAR
+    source_file VARCHAR,
+
+    -- CHECK constraints for data validation
+    CONSTRAINT chk_patients_sex CHECK (patient_sex IS NULL OR patient_sex IN ('M', 'F', 'U', 'Male', 'Female', 'Unknown', '')),
+    CONSTRAINT chk_patients_age CHECK (patient_age_numeric IS NULL OR (patient_age_numeric >= 0 AND patient_age_numeric <= 200)),
+    CONSTRAINT chk_patients_seq_num CHECK (patient_sequence_number IS NULL OR patient_sequence_number > 0)
 )
 """
 
 # =============================================================================
 # MDR TEXT TABLE (6 FDA columns)
+# Informational FK: mdr_report_key -> master_events.mdr_report_key
 # =============================================================================
 
 CREATE_MDR_TEXT = """
@@ -310,12 +356,18 @@ CREATE TABLE IF NOT EXISTS mdr_text (
 
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    source_file VARCHAR
+    source_file VARCHAR,
+
+    -- CHECK constraints for data validation
+    CONSTRAINT chk_text_type_code CHECK (text_type_code IS NULL OR text_type_code IN ('D', 'E', 'N', 'H', 'A', 'B', 'C', 'F', 'R', ''))
+    -- Text type codes: D=Device description, E=Event description, N=Narrative,
+    -- H=History, A=Additional, B=Background, C=Conclusion, F=Follow-up, R=Report
 )
 """
 
 # =============================================================================
 # DEVICE PROBLEMS TABLE (2 FDA columns)
+# Informational FK: mdr_report_key -> master_events.mdr_report_key
 # =============================================================================
 
 CREATE_DEVICE_PROBLEMS = """
@@ -339,6 +391,7 @@ CREATE TABLE IF NOT EXISTS device_problems (
 
 # =============================================================================
 # PATIENT PROBLEMS TABLE (from patientproblemcode.zip)
+# Informational FK: mdr_report_key -> master_events.mdr_report_key
 # =============================================================================
 
 CREATE_PATIENT_PROBLEMS = """
@@ -404,12 +457,19 @@ CREATE TABLE IF NOT EXISTS asr_reports (
 
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    source_file VARCHAR
+    source_file VARCHAR,
+
+    -- CHECK constraints for ASR data validation
+    CONSTRAINT chk_asr_year CHECK (report_year IS NULL OR (report_year >= 1999 AND report_year <= 2019)),
+    CONSTRAINT chk_asr_death_count CHECK (death_count IS NULL OR death_count >= 0),
+    CONSTRAINT chk_asr_injury_count CHECK (injury_count IS NULL OR injury_count >= 0),
+    CONSTRAINT chk_asr_malfunction_count CHECK (malfunction_count IS NULL OR malfunction_count >= 0)
 )
 """
 
 # =============================================================================
 # ASR PATIENT PROBLEM CODES (from ASR_PPC.zip)
+# Informational FK: report_id -> asr_reports.report_id
 # =============================================================================
 
 CREATE_ASR_PATIENT_PROBLEMS = """
@@ -474,7 +534,10 @@ CREATE TABLE IF NOT EXISTS den_reports (
     -- Metadata
     report_year INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    source_file VARCHAR
+    source_file VARCHAR,
+
+    -- CHECK constraints for DEN data validation
+    CONSTRAINT chk_den_year CHECK (report_year IS NULL OR (report_year >= 1984 AND report_year <= 1997))
 )
 """
 
