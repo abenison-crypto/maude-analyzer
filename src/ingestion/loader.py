@@ -1,6 +1,8 @@
 """Load transformed MAUDE data into DuckDB with dynamic schema support."""
 
 import duckdb
+import fnmatch
+import re
 from datetime import datetime, date
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Generator
@@ -11,13 +13,43 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import config, SCS_PRODUCT_CODES
+from config import config
 from config.logging_config import get_logger
 from src.database import get_connection, initialize_database
 from src.ingestion.parser import MAUDEParser, FILE_COLUMNS, SchemaInfo
 from src.ingestion.transformer import DataTransformer, transform_record
 
 logger = get_logger("loader")
+
+
+def glob_case_insensitive(directory: Path, pattern: str) -> List[Path]:
+    """
+    Case-insensitive glob matching for file patterns.
+
+    Handles both uppercase (DEVICE2020.txt) and lowercase (device2020.txt) filenames
+    that may be encountered on different systems or from different sources.
+
+    Args:
+        directory: Directory to search in.
+        pattern: Glob pattern (e.g., "device*.txt").
+
+    Returns:
+        List of matching Path objects, sorted alphabetically.
+    """
+    # Convert glob pattern to regex pattern (case-insensitive)
+    # Replace * with .* and ? with . for regex
+    regex_pattern = fnmatch.translate(pattern)
+    regex = re.compile(regex_pattern, re.IGNORECASE)
+
+    matches = []
+    try:
+        for item in directory.iterdir():
+            if item.is_file() and regex.match(item.name):
+                matches.append(item)
+    except OSError as e:
+        logger.warning(f"Error reading directory {directory}: {e}")
+
+    return sorted(matches)
 
 
 @dataclass
@@ -556,13 +588,14 @@ class MAUDELoader:
             # Load files in order (device first to get MDR keys for product code filtering)
             for file_type in file_types:
                 pattern = self._get_file_pattern(file_type)
-                files = sorted(data_dir.glob(pattern))
+                # Use case-insensitive glob to handle DEVICE2020.txt vs device2020.txt
+                files = glob_case_insensitive(data_dir, pattern)
 
                 # Exclude problem files from device pattern
                 if file_type == "device":
                     files = [f for f in files if "problem" not in f.name.lower()]
-                    # Also include device{year}.txt files
-                    device_year_files = sorted(data_dir.glob("device*.txt"))
+                    # Also include device{year}.txt files (case-insensitive)
+                    device_year_files = glob_case_insensitive(data_dir, "device*.txt")
                     device_year_files = [f for f in device_year_files if "problem" not in f.name.lower()]
                     files = sorted(set(files + device_year_files))
 
@@ -811,16 +844,10 @@ if __name__ == "__main__":
     arg_parser.add_argument("--db", type=Path, default=config.database.path)
     arg_parser.add_argument("--type", help="File type to load")
     arg_parser.add_argument("--file", type=Path, help="Single file to load")
-    arg_parser.add_argument(
-        "--filter-scs",
-        action="store_true",
-        help="Filter to only load SCS product codes (default: load all)",
-    )
 
     args = arg_parser.parse_args()
 
-    filter_codes = SCS_PRODUCT_CODES if args.filter_scs else None
-    loader = MAUDELoader(db_path=args.db, filter_product_codes=filter_codes)
+    loader = MAUDELoader(db_path=args.db)
 
     if args.file:
         result = loader.load_file(args.file, args.type)

@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from api.config import get_settings
-from api.routers import events, analytics, admin
+from api.routers import events, analytics, admin, data_quality
 
 settings = get_settings()
 
@@ -66,6 +66,7 @@ app.add_middleware(
 app.include_router(events.router, prefix="/api/events", tags=["Events"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(data_quality.router, prefix="/api", tags=["Data Quality"])
 
 
 @app.get("/")
@@ -79,6 +80,7 @@ async def root():
             "events": "/api/events",
             "analytics": "/api/analytics",
             "admin": "/api/admin",
+            "data_quality": "/api/data-quality",
         },
     }
 

@@ -265,7 +265,90 @@ def run_health_check(verbose: bool = True) -> dict:
                 }.get(row[0], row[0])
                 print(f"{type_label or '(NULL)':20s}: {row[1]:>12,} ({row[2]:>5.1f}%)")
 
-        # 8. Top manufacturers (if data exists)
+        # 8. Manufacturer coverage by year
+        if verbose:
+            print("\n" + "-" * 60)
+            print("MANUFACTURER COVERAGE BY YEAR")
+            print("-" * 60)
+
+        mfr_by_year = conn.execute("""
+            SELECT
+                EXTRACT(YEAR FROM date_received)::INTEGER as year,
+                COUNT(*) as total,
+                COUNT(manufacturer_clean) as with_mfr,
+                ROUND(COUNT(manufacturer_clean) * 100.0 / COUNT(*), 1) as pct
+            FROM master_events
+            WHERE date_received IS NOT NULL
+            GROUP BY 1
+            ORDER BY 1
+        """).fetchall()
+
+        results["manufacturer_by_year"] = []
+        years_with_gaps = []
+        for row in mfr_by_year:
+            if row[0]:
+                year_data = {
+                    "year": int(row[0]),
+                    "total": row[1],
+                    "with_manufacturer": row[2],
+                    "percent": row[3],
+                }
+                results["manufacturer_by_year"].append(year_data)
+
+                if row[3] < 50:
+                    years_with_gaps.append((int(row[0]), row[3]))
+
+                if verbose:
+                    status = "✓" if row[3] >= 90 else ("⚠" if row[3] >= 50 else "✗")
+                    print(f"{status} {row[0]}: {row[3]:>5.1f}% ({row[2]:,} of {row[1]:,})")
+
+        if years_with_gaps:
+            gap_msg = f"Low manufacturer coverage in years: {', '.join(f'{y[0]} ({y[1]:.0f}%)' for y in years_with_gaps[:5])}"
+            results["warnings"].append(gap_msg)
+
+        # 9. Device match rate by year
+        if verbose:
+            print("\n" + "-" * 60)
+            print("DEVICE MATCH RATE BY YEAR")
+            print("-" * 60)
+
+        device_by_year = conn.execute("""
+            SELECT
+                EXTRACT(YEAR FROM m.date_received)::INTEGER as year,
+                COUNT(*) as total,
+                COUNT(DISTINCT CASE WHEN d.mdr_report_key IS NOT NULL THEN m.mdr_report_key END) as with_device,
+                ROUND(COUNT(DISTINCT CASE WHEN d.mdr_report_key IS NOT NULL THEN m.mdr_report_key END) * 100.0 / COUNT(*), 1) as pct
+            FROM master_events m
+            LEFT JOIN devices d ON m.mdr_report_key = d.mdr_report_key
+            WHERE m.date_received IS NOT NULL
+            GROUP BY 1
+            ORDER BY 1
+        """).fetchall()
+
+        results["device_match_by_year"] = []
+        years_no_devices = []
+        for row in device_by_year:
+            if row[0]:
+                year_data = {
+                    "year": int(row[0]),
+                    "total": row[1],
+                    "with_device": row[2],
+                    "percent": row[3],
+                }
+                results["device_match_by_year"].append(year_data)
+
+                if row[3] < 10:
+                    years_no_devices.append(int(row[0]))
+
+                if verbose:
+                    status = "✓" if row[3] >= 80 else ("⚠" if row[3] >= 50 else "✗")
+                    print(f"{status} {row[0]}: {row[3]:>5.1f}% ({row[2]:,} of {row[1]:,})")
+
+        if years_no_devices:
+            device_msg = f"Missing device files for years: {', '.join(str(y) for y in years_no_devices[:10])}"
+            results["issues"].append(device_msg)
+
+        # 10. Top manufacturers (if data exists)
         if results["manufacturer"]["with_manufacturer"] > 0:
             if verbose:
                 print("\n" + "-" * 60)
