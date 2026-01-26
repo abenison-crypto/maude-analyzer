@@ -292,6 +292,87 @@ def validate_data(
     return report.passed
 
 
+def update_data_freshness(
+    db_path: Path,
+    logger,
+) -> None:
+    """
+    Update the data_freshness table with current statistics.
+
+    Args:
+        db_path: Path to database.
+        logger: Logger instance.
+    """
+    logger.info("Updating data freshness tracking...")
+
+    tables_to_track = [
+        ("master_events", "date_received"),
+        ("devices", "date_received"),
+        ("patients", "date_received"),
+        ("mdr_text", "date_report"),
+        ("device_problems", "date_added"),
+        ("patient_problems", "date_added"),
+    ]
+
+    from datetime import date
+    today = date.today()
+
+    with get_connection(db_path) as conn:
+        for table_name, date_column in tables_to_track:
+            try:
+                # Get latest record date and count
+                result = conn.execute(f"""
+                    SELECT
+                        MAX({date_column}) as latest_date,
+                        COUNT(*) as record_count
+                    FROM {table_name}
+                    WHERE {date_column} IS NOT NULL
+                """).fetchone()
+
+                latest_date = result[0]
+                record_count = result[1]
+
+                # Calculate days since update
+                if latest_date:
+                    if hasattr(latest_date, 'date'):
+                        latest_date = latest_date.date()
+                    days_old = (today - latest_date).days if isinstance(latest_date, date) else None
+                else:
+                    days_old = None
+
+                # Determine status
+                if days_old is None:
+                    status = "UNKNOWN"
+                elif days_old <= 7:
+                    status = "CURRENT"
+                elif days_old <= 14:
+                    status = "STALE"
+                else:
+                    status = "VERY_STALE"
+
+                # Upsert into data_freshness table
+                conn.execute("""
+                    INSERT INTO data_freshness (
+                        table_name, last_successful_load, latest_record_date,
+                        days_since_update, record_count, status, updated_at
+                    ) VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (table_name) DO UPDATE SET
+                        last_successful_load = CURRENT_TIMESTAMP,
+                        latest_record_date = excluded.latest_record_date,
+                        days_since_update = excluded.days_since_update,
+                        record_count = excluded.record_count,
+                        status = excluded.status,
+                        updated_at = CURRENT_TIMESTAMP
+                """, [table_name, latest_date, days_old, record_count, status])
+
+                logger.debug(f"  {table_name}: {record_count:,} records, latest: {latest_date}, status: {status}")
+
+            except Exception as e:
+                logger.warning(f"  Error updating freshness for {table_name}: {e}")
+
+    logger.info("Data freshness tracking updated")
+
+
 def generate_summary(
     db_path: Path,
     start_time: datetime,
@@ -508,6 +589,13 @@ def main():
         else:
             logger.info("\n[Skipping validation]")
             validation_passed = True
+
+        # Step 5b: Update data freshness tracking
+        logger.info("\n" + "-" * 40)
+        logger.info("STEP 5b: Updating data freshness")
+        logger.info("-" * 40)
+
+        update_data_freshness(args.db, logger)
 
         # Step 6: Summary
         logger.info("\n" + "-" * 40)

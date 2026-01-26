@@ -12,6 +12,7 @@ from .constants import (
     # Code mappings
     EVENT_TYPES,
     OUTCOME_CODES,
+    TREATMENT_CODES,
     TEXT_TYPE_CODES,
     # Colors
     MANUFACTURER_COLORS,
@@ -27,6 +28,7 @@ from .constants import (
     # Helper functions
     get_event_type_name,
     get_outcome_code_name,
+    get_treatment_code_name,
     get_text_type_name,
     get_manufacturer_color,
     get_event_type_color,
@@ -78,6 +80,7 @@ __all__ = [
     # Constants
     "EVENT_TYPES",
     "OUTCOME_CODES",
+    "TREATMENT_CODES",
     "TEXT_TYPE_CODES",
     "MANUFACTURER_COLORS",
     "EVENT_TYPE_COLORS",
@@ -90,6 +93,7 @@ __all__ = [
     # Helper functions
     "get_event_type_name",
     "get_outcome_code_name",
+    "get_treatment_code_name",
     "get_text_type_name",
     "get_manufacturer_color",
     "get_event_type_color",

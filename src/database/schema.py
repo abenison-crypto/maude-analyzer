@@ -265,6 +265,7 @@ CREATE TABLE IF NOT EXISTS devices (
 
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     source_file VARCHAR,
 
     -- CHECK constraints for data validation
@@ -320,6 +321,17 @@ CREATE TABLE IF NOT EXISTS patients (
     outcome_required_intervention BOOLEAN DEFAULT FALSE,
     outcome_other BOOLEAN DEFAULT FALSE,
 
+    -- Parsed individual treatments (boolean flags)
+    treatment_drug BOOLEAN DEFAULT FALSE,
+    treatment_device BOOLEAN DEFAULT FALSE,
+    treatment_surgery BOOLEAN DEFAULT FALSE,
+    treatment_other BOOLEAN DEFAULT FALSE,
+    treatment_unknown BOOLEAN DEFAULT FALSE,
+    treatment_no_information BOOLEAN DEFAULT FALSE,
+    treatment_blood_products BOOLEAN DEFAULT FALSE,
+    treatment_hospitalization BOOLEAN DEFAULT FALSE,
+    treatment_physical_therapy BOOLEAN DEFAULT FALSE,
+
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     source_file VARCHAR,
@@ -356,6 +368,7 @@ CREATE TABLE IF NOT EXISTS mdr_text (
 
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     source_file VARCHAR,
 
     -- CHECK constraints for data validation
@@ -680,6 +693,25 @@ CREATE TABLE IF NOT EXISTS download_state (
 """
 
 # =============================================================================
+# DATA FRESHNESS TRACKING TABLE
+# =============================================================================
+
+CREATE_DATA_FRESHNESS = """
+CREATE TABLE IF NOT EXISTS data_freshness (
+    table_name VARCHAR PRIMARY KEY,
+    last_download_check TIMESTAMP,
+    last_successful_load TIMESTAMP,
+    latest_record_date DATE,
+    days_since_update INTEGER,
+    record_count BIGINT,
+    status VARCHAR,  -- 'CURRENT', 'STALE', 'VERY_STALE'
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+# =============================================================================
 # AGGREGATE TABLES
 # =============================================================================
 
@@ -810,6 +842,7 @@ def create_all_tables(conn: duckdb.DuckDBPyConnection) -> None:
         ("saved_queries", CREATE_SAVED_QUERIES),
         ("app_settings", CREATE_APP_SETTINGS),
         ("download_state", CREATE_DOWNLOAD_STATE),
+        ("data_freshness", CREATE_DATA_FRESHNESS),
         ("daily_aggregates", CREATE_DAILY_AGGREGATES),
     ]
 

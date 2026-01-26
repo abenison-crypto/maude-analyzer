@@ -222,6 +222,25 @@ OUTCOME_CODES = {
     "OT": "Other",
 }
 
+# Patient Treatment Codes (FDA MAUDE treatment categories)
+TREATMENT_CODES = {
+    "1": "Drug",
+    "2": "Device",
+    "3": "Surgery",
+    "4": "Other",
+    "5": "Unknown",
+    "6": "No Information",
+    "7": "Blood Products",
+    "8": "Hospitalization/Extended Care",
+    "9": "Physical Therapy/Rehabilitation",
+}
+
+
+def get_treatment_code_name(code: str) -> str:
+    """Get display name for treatment code."""
+    return TREATMENT_CODES.get(str(code), f"Code {code}")
+
+
 # Text Type Codes
 TEXT_TYPE_CODES = {
     "D": "Event Description",

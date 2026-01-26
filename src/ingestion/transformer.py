@@ -9,7 +9,7 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import DATE_FORMATS, MANUFACTURER_MAPPINGS, OUTCOME_CODES
+from config import DATE_FORMATS, MANUFACTURER_MAPPINGS, OUTCOME_CODES, TREATMENT_CODES
 from config.logging_config import get_logger
 from config.schema_registry import DATE_COLUMNS, INTEGER_COLUMNS, FLAG_COLUMNS
 from config.column_mappings import COLUMN_MAPPINGS, get_db_column_name
@@ -289,6 +289,30 @@ class DataTransformer:
             transformed["outcome_required_intervention"] = outcomes.get("RI", False)
             transformed["outcome_other"] = outcomes.get("OT", False)
 
+        # Parse treatment codes (semicolon-separated like "1;3;8")
+        treatment_raw = None
+
+        # Try to find treatment codes in the record
+        for key in ["treatment_codes_raw", "sequence_number_treatment"]:
+            if transformed.get(key) and isinstance(transformed[key], str):
+                if ";" in transformed[key] or transformed[key] in TREATMENT_CODES:
+                    treatment_raw = transformed[key]
+                    break
+
+        if treatment_raw:
+            transformed["treatment_codes_raw"] = treatment_raw
+            treatments = self.parse_treatment_codes(treatment_raw)
+
+            transformed["treatment_drug"] = treatments.get("1", False)
+            transformed["treatment_device"] = treatments.get("2", False)
+            transformed["treatment_surgery"] = treatments.get("3", False)
+            transformed["treatment_other"] = treatments.get("4", False)
+            transformed["treatment_unknown"] = treatments.get("5", False)
+            transformed["treatment_no_information"] = treatments.get("6", False)
+            transformed["treatment_blood_products"] = treatments.get("7", False)
+            transformed["treatment_hospitalization"] = treatments.get("8", False)
+            transformed["treatment_physical_therapy"] = treatments.get("9", False)
+
         if source_file:
             transformed["source_file"] = source_file
 
@@ -564,6 +588,30 @@ class DataTransformer:
                 outcomes[code] = True
 
         return outcomes
+
+    def parse_treatment_codes(self, codes_str: str) -> Dict[str, bool]:
+        """
+        Parse treatment codes string.
+
+        Args:
+            codes_str: Semicolon-separated treatment codes (e.g., "1;3;8").
+
+        Returns:
+            Dictionary mapping code to True if present.
+        """
+        treatments = {}
+
+        if not codes_str:
+            return treatments
+
+        codes = str(codes_str).split(";")
+
+        for code in codes:
+            code = code.strip()
+            if code in TREATMENT_CODES:
+                treatments[code] = True
+
+        return treatments
 
     def clean_text(self, text: str) -> str:
         """

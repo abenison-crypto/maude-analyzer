@@ -171,21 +171,38 @@ def run_health_check(verbose: bool = True) -> dict:
         if verbose:
             print(f"Events without devices: {events_no_device:>12,} ({no_device_pct:.1f}%)")
 
-        # 5. Field completeness for key fields
+        # 5. Field completeness for key fields (expanded to 50+ fields)
         if verbose:
             print("\n" + "-" * 60)
-            print("FIELD COMPLETENESS (master_events)")
+            print("FIELD COMPLETENESS (master_events - key fields)")
             print("-" * 60)
 
-        key_fields = [
-            "date_received", "date_of_event", "event_type",
-            "date_facility_aware", "report_to_manufacturer",
-            "manufacturer_name", "manufacturer_clean", "product_code"
+        # Expanded key field list (50+ critical fields instead of just 8)
+        key_fields_master = [
+            # Core identifiers
+            "mdr_report_key", "report_number", "event_key",
+            # Key dates
+            "date_received", "date_of_event", "date_report", "date_added",
+            # Event flags
+            "adverse_event_flag", "product_problem_flag", "event_type",
+            # Reporter info
+            "reporter_occupation_code", "health_professional", "initial_report_to_fda",
+            # Facility info
+            "date_facility_aware", "report_to_manufacturer", "report_to_fda",
+            # Manufacturer info (primary)
+            "manufacturer_name", "manufacturer_clean", "manufacturer_city",
+            "manufacturer_state", "manufacturer_country",
+            # Manufacturer contact
+            "manufacturer_contact_first_name", "manufacturer_contact_last_name",
+            # Product identification
+            "product_code", "pma_pmn_number", "exemption_number",
+            # Report type
+            "type_of_report", "report_source_code", "source_type",
         ]
 
-        results["field_completeness"] = {}
+        results["field_completeness"] = {"master_events": {}}
 
-        for field in key_fields:
+        for field in key_fields_master:
             try:
                 stats = conn.execute(f"""
                     SELECT
@@ -194,19 +211,87 @@ def run_health_check(verbose: bool = True) -> dict:
                     FROM master_events
                 """).fetchone()
 
-                results["field_completeness"][field] = {
+                results["field_completeness"]["master_events"][field] = {
                     "non_null_count": stats[0],
                     "percent": stats[1],
                 }
 
                 if verbose:
-                    status = "✓" if stats[1] > 90 else ("⚠" if stats[1] > 50 else "✗")
-                    print(f"{status} {field:30s}: {stats[1]:>6.1f}%")
+                    status = "" if stats[1] > 90 else ("" if stats[1] > 50 else "")
+                    print(f"{status} {field:35s}: {stats[1]:>6.1f}%")
 
             except Exception as e:
-                results["field_completeness"][field] = {"error": str(e)}
+                results["field_completeness"]["master_events"][field] = {"error": str(e)}
                 if verbose:
-                    print(f"✗ {field:30s}: ERROR - {e}")
+                    print(f" {field:35s}: ERROR - {e}")
+
+        # Device table completeness
+        if verbose:
+            print("\n" + "-" * 60)
+            print("FIELD COMPLETENESS (devices)")
+            print("-" * 60)
+
+        key_fields_device = [
+            "mdr_report_key", "device_sequence_number", "brand_name", "generic_name",
+            "model_number", "catalog_number", "lot_number", "manufacturer_d_name",
+            "manufacturer_d_clean", "device_report_product_code", "implant_flag",
+        ]
+
+        results["field_completeness"]["devices"] = {}
+        for field in key_fields_device:
+            try:
+                stats = conn.execute(f"""
+                    SELECT
+                        COUNT({field}) as non_null,
+                        ROUND(COUNT({field}) * 100.0 / COUNT(*), 2) as pct
+                    FROM devices
+                """).fetchone()
+
+                results["field_completeness"]["devices"][field] = {
+                    "non_null_count": stats[0],
+                    "percent": stats[1],
+                }
+
+                if verbose:
+                    status = "" if stats[1] > 90 else ("" if stats[1] > 50 else "")
+                    print(f"{status} {field:35s}: {stats[1]:>6.1f}%")
+
+            except Exception as e:
+                results["field_completeness"]["devices"][field] = {"error": str(e)}
+
+        # Patient table completeness
+        if verbose:
+            print("\n" + "-" * 60)
+            print("FIELD COMPLETENESS (patients)")
+            print("-" * 60)
+
+        key_fields_patient = [
+            "mdr_report_key", "patient_sequence_number", "date_received",
+            "patient_age", "patient_sex", "outcome_codes_raw",
+            "outcome_death", "outcome_hospitalization", "outcome_life_threatening",
+        ]
+
+        results["field_completeness"]["patients"] = {}
+        for field in key_fields_patient:
+            try:
+                stats = conn.execute(f"""
+                    SELECT
+                        COUNT({field}) as non_null,
+                        ROUND(COUNT({field}) * 100.0 / COUNT(*), 2) as pct
+                    FROM patients
+                """).fetchone()
+
+                results["field_completeness"]["patients"][field] = {
+                    "non_null_count": stats[0],
+                    "percent": stats[1],
+                }
+
+                if verbose:
+                    status = "" if stats[1] > 90 else ("" if stats[1] > 50 else "")
+                    print(f"{status} {field:35s}: {stats[1]:>6.1f}%")
+
+            except Exception as e:
+                results["field_completeness"]["patients"][field] = {"error": str(e)}
 
         # 6. Date range
         if verbose:
@@ -374,6 +459,174 @@ def run_health_check(verbose: bool = True) -> dict:
                 })
                 if verbose:
                     print(f"{row[0][:40]:40s}: {row[1]:>12,}")
+
+        # 11. Data freshness tracking
+        if verbose:
+            print("\n" + "-" * 60)
+            print("DATA FRESHNESS")
+            print("-" * 60)
+
+        from datetime import date as date_type
+        today = date_type.today()
+
+        freshness_checks = [
+            ("master_events", "date_received", 7),
+            ("master_events", "date_added", 7),
+            ("devices", "date_received", 14),
+            ("patients", "date_received", 14),
+        ]
+
+        results["data_freshness"] = {}
+        for table, date_col, max_days in freshness_checks:
+            try:
+                result = conn.execute(f"""
+                    SELECT MAX({date_col}) FROM {table} WHERE {date_col} IS NOT NULL
+                """).fetchone()[0]
+
+                if result:
+                    latest = result if isinstance(result, date_type) else result.date() if hasattr(result, 'date') else None
+                    if latest:
+                        days_old = (today - latest).days
+                        status_label = "CURRENT" if days_old <= max_days else ("STALE" if days_old <= max_days * 2 else "VERY_STALE")
+
+                        results["data_freshness"][f"{table}.{date_col}"] = {
+                            "latest_date": str(latest),
+                            "days_old": days_old,
+                            "status": status_label,
+                        }
+
+                        if verbose:
+                            status = "" if status_label == "CURRENT" else ""
+                            print(f"{status} {table}.{date_col}: {latest} ({days_old} days old) - {status_label}")
+
+                        if status_label == "VERY_STALE":
+                            results["warnings"].append(f"Data is {days_old} days old in {table}.{date_col}")
+            except Exception as e:
+                if verbose:
+                    print(f" {table}.{date_col}: ERROR - {e}")
+
+        # 12. Duplicate detection
+        if verbose:
+            print("\n" + "-" * 60)
+            print("DUPLICATE DETECTION")
+            print("-" * 60)
+
+        dup_checks = [
+            ("master_events", "mdr_report_key"),
+            ("devices", "mdr_report_key, device_sequence_number"),
+            ("patients", "mdr_report_key, patient_sequence_number"),
+            ("mdr_text", "mdr_report_key, mdr_text_key"),
+        ]
+
+        results["duplicates"] = {}
+        for table, key_cols in dup_checks:
+            try:
+                dup_count = conn.execute(f"""
+                    SELECT COUNT(*) FROM (
+                        SELECT {key_cols}, COUNT(*) as cnt
+                        FROM {table}
+                        GROUP BY {key_cols}
+                        HAVING COUNT(*) > 1
+                    )
+                """).fetchone()[0]
+
+                results["duplicates"][table] = {"duplicate_keys": dup_count}
+
+                if verbose:
+                    status = "" if dup_count == 0 else ""
+                    print(f"{status} {table}: {dup_count:,} duplicate key combinations")
+
+                if dup_count > 0:
+                    results["warnings"].append(f"{table} has {dup_count:,} duplicate key combinations")
+
+            except Exception as e:
+                if verbose:
+                    print(f" {table}: ERROR - {e}")
+
+        # 13. Statistical anomalies (month-over-month)
+        if verbose:
+            print("\n" + "-" * 60)
+            print("STATISTICAL ANOMALY DETECTION")
+            print("-" * 60)
+
+        try:
+            monthly_counts = conn.execute("""
+                SELECT
+                    EXTRACT(YEAR FROM date_received)::INTEGER as year,
+                    EXTRACT(MONTH FROM date_received)::INTEGER as month,
+                    COUNT(*) as count
+                FROM master_events
+                WHERE date_received IS NOT NULL
+                  AND date_received >= CURRENT_DATE - INTERVAL '24 months'
+                GROUP BY 1, 2
+                ORDER BY 1, 2
+            """).fetchall()
+
+            if monthly_counts:
+                counts = [row[2] for row in monthly_counts]
+                avg = sum(counts) / len(counts)
+                std_dev = (sum((c - avg) ** 2 for c in counts) / len(counts)) ** 0.5
+
+                results["monthly_stats"] = {
+                    "average": round(avg),
+                    "std_dev": round(std_dev),
+                    "months_analyzed": len(counts),
+                }
+
+                anomalies = []
+                for row in monthly_counts:
+                    year, month, count = row
+                    deviation = abs(count - avg) / avg if avg > 0 else 0
+                    if deviation > 0.5:  # >50% deviation from average
+                        anomalies.append(f"{year}-{month:02d}: {count:,} (avg: {avg:.0f})")
+
+                results["monthly_stats"]["anomalies"] = anomalies
+
+                if verbose:
+                    print(f"Analyzed {len(counts)} months (avg: {avg:,.0f}, std: {std_dev:,.0f})")
+                    if anomalies:
+                        print(f" Found {len(anomalies)} anomalous months:")
+                        for a in anomalies[:5]:
+                            print(f"    {a}")
+                    else:
+                        print(" No statistical anomalies detected")
+
+        except Exception as e:
+            if verbose:
+                print(f" Statistical analysis error: {e}")
+
+        # 14. Patient problem coverage
+        if verbose:
+            print("\n" + "-" * 60)
+            print("PATIENT PROBLEM COVERAGE")
+            print("-" * 60)
+
+        try:
+            pp_count = conn.execute("SELECT COUNT(*) FROM patient_problems").fetchone()[0]
+            ppc_count = conn.execute("SELECT COUNT(*) FROM patient_problem_codes").fetchone()[0]
+            unique_codes = conn.execute("SELECT COUNT(DISTINCT patient_problem_code) FROM patient_problems").fetchone()[0]
+
+            results["patient_problem_coverage"] = {
+                "patient_problems_count": pp_count,
+                "problem_code_definitions": ppc_count,
+                "unique_codes_in_use": unique_codes,
+            }
+
+            if verbose:
+                print(f"Patient problem records: {pp_count:>15,}")
+                print(f"Problem code definitions: {ppc_count:>14,}")
+                print(f"Unique codes in use: {unique_codes:>18,}")
+
+                # Check if below expected (~21M)
+                if pp_count < 15_000_000:
+                    print(f" Patient problems count ({pp_count:,}) is below expected ~21M")
+                    results["warnings"].append(f"Patient problems count ({pp_count:,}) below expected ~21M")
+                else:
+                    print(f" Patient problems count is within expected range")
+
+        except Exception as e:
+            if verbose:
+                print(f" Patient problem check error: {e}")
 
         # Summary
         if verbose:

@@ -73,6 +73,39 @@ UPDATEABLE_COLUMNS = {
         # Derived
         "patient_age_numeric", "patient_age_unit",
     ],
+    "device": [
+        # Device details that may be corrected
+        "brand_name", "generic_name", "model_number", "catalog_number",
+        "lot_number", "other_id_number", "device_age_text",
+        # Manufacturer info that may be corrected
+        "manufacturer_d_name", "manufacturer_d_address_1", "manufacturer_d_address_2",
+        "manufacturer_d_city", "manufacturer_d_state", "manufacturer_d_zip",
+        "manufacturer_d_zip_ext", "manufacturer_d_country", "manufacturer_d_postal",
+        # Device status fields
+        "device_operator", "device_availability", "device_evaluated_by_manufacturer",
+        # Flags
+        "implant_flag", "date_removed_flag",
+        # Dates
+        "expiration_date_of_device", "date_returned_to_manufacturer",
+        # Derived fields
+        "manufacturer_d_clean",
+    ],
+    "text": [
+        # Text content that may be updated/corrected
+        "text_content",
+        "text_type_code",
+        "patient_sequence_number",
+        "date_report",
+    ],
+}
+
+# Primary key columns for each file type
+# Used for UPDATE WHERE clause - some tables have composite keys
+PRIMARY_KEY_COLUMNS = {
+    "master": ["mdr_report_key"],
+    "patient": ["mdr_report_key", "patient_sequence_number"],
+    "device": ["mdr_report_key", "device_sequence_number"],
+    "text": ["mdr_report_key", "mdr_text_key"],
 }
 
 
@@ -207,6 +240,9 @@ class ChangeProcessor:
         """
         Update a batch of records in the database.
 
+        Handles both simple primary keys (master) and composite primary keys
+        (device, text, patient).
+
         Args:
             conn: Database connection.
             file_type: Type of records.
@@ -222,6 +258,7 @@ class ChangeProcessor:
 
         table_name = self._get_table_name(file_type)
         updateable = UPDATEABLE_COLUMNS.get(file_type, [])
+        pk_columns = PRIMARY_KEY_COLUMNS.get(file_type, ["mdr_report_key"])
 
         if not updateable:
             # For file types without specific update columns, just skip
@@ -229,14 +266,27 @@ class ChangeProcessor:
             return stats
 
         for record in batch:
-            mdr_key = record.get("mdr_report_key")
-            if not mdr_key:
+            # Get primary key values
+            pk_values = []
+            pk_valid = True
+            for pk_col in pk_columns:
+                pk_val = record.get(pk_col)
+                if pk_val is None:
+                    pk_valid = False
+                    break
+                pk_values.append(pk_val)
+
+            if not pk_valid:
                 continue
+
+            # Build WHERE clause for composite keys
+            where_parts = [f"{col} = ?" for col in pk_columns]
+            where_clause = " AND ".join(where_parts)
 
             # Check if record exists
             existing = conn.execute(
-                f"SELECT 1 FROM {table_name} WHERE mdr_report_key = ?",
-                [mdr_key]
+                f"SELECT 1 FROM {table_name} WHERE {where_clause}",
+                pk_values
             ).fetchone()
 
             if not existing:
@@ -259,19 +309,23 @@ class ChangeProcessor:
             if not set_parts:
                 continue
 
-            # Always update date_changed
-            set_parts.append("date_changed = CURRENT_TIMESTAMP")
+            # Always update timestamp column to track changes
+            if file_type in ["master", "patient"]:
+                set_parts.append("date_changed = CURRENT_TIMESTAMP")
+            elif file_type in ["device", "text"]:
+                set_parts.append("updated_at = CURRENT_TIMESTAMP")
 
-            # Add mdr_key for WHERE clause
-            values.append(mdr_key)
+            # Add primary key values for WHERE clause
+            values.extend(pk_values)
 
-            sql = f"UPDATE {table_name} SET {', '.join(set_parts)} WHERE mdr_report_key = ?"
+            sql = f"UPDATE {table_name} SET {', '.join(set_parts)} WHERE {where_clause}"
 
             try:
                 conn.execute(sql, values)
                 stats["updated"] += 1
             except Exception as e:
-                logger.debug(f"Error updating {mdr_key}: {e}")
+                pk_str = ", ".join(f"{c}={v}" for c, v in zip(pk_columns, pk_values))
+                logger.debug(f"Error updating {pk_str}: {e}")
 
         return stats
 
@@ -292,9 +346,9 @@ class ChangeProcessor:
 
         if "mdrfoi" in name:
             return "master"
-        elif "patient" in name:
+        elif "patient" in name and "problem" not in name:
             return "patient"
-        elif "foidev" in name and "problem" not in name:
+        elif "devicechange" in name or ("foidev" in name and "problem" not in name):
             return "device"
         elif "foitext" in name:
             return "text"
@@ -340,10 +394,12 @@ def process_all_change_files(
     processor = ChangeProcessor()
 
     # Find all CHANGE files
-    # Pattern: *Change.txt (e.g., mdrfoiChange.txt, patientChange.txt)
+    # Pattern: *Change.txt (e.g., mdrfoiChange.txt, patientChange.txt, deviceChange.txt, foitextChange.txt)
     change_patterns = [
         "mdrfoiChange*.txt",
         "patientChange*.txt",
+        "deviceChange*.txt",
+        "foitextChange*.txt",
     ]
 
     for pattern in change_patterns:
