@@ -69,9 +69,9 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(data_quality.router, prefix="/api", tags=["Data Quality"])
 
 
-@app.get("/")
-async def root():
-    """Root endpoint with API info."""
+@app.get("/api")
+async def api_root():
+    """API root endpoint with API info."""
     return {
         "name": settings.app_name,
         "version": settings.version,
@@ -121,9 +121,21 @@ if STATIC_DIR.exists():
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
+    @app.get("/")
+    async def serve_root():
+        """Serve frontend index.html at root."""
+        index_path = STATIC_DIR / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        return {"detail": "Frontend not found"}
+
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
         """Serve frontend for all non-API routes."""
+        # Skip API routes
+        if full_path.startswith("api/"):
+            return {"detail": "Not found"}
+
         # Check if file exists in static dir
         file_path = STATIC_DIR / full_path
         if file_path.exists() and file_path.is_file():
