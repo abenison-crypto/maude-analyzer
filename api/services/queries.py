@@ -5,6 +5,18 @@ from datetime import date
 
 from api.services.database import get_db
 from api.services.filters import build_filter_clause, build_count_query, build_paginated_query
+from api.constants.columns import (
+    COLUMN_EVENT_TYPE,
+    COLUMN_MANUFACTURER_CLEAN,
+    COLUMN_PRODUCT_CODE,
+    EVENT_TYPE_CODES,
+)
+
+# Event type codes for SQL queries (avoid string literals)
+EVENT_CODE_DEATH = "D"
+EVENT_CODE_INJURY = "IN"
+EVENT_CODE_MALFUNCTION = "M"
+EVENT_CODE_OTHER = "O"
 
 
 class QueryService:
@@ -37,10 +49,10 @@ class QueryService:
         query = f"""
             SELECT
                 COUNT(*) as total,
-                COUNT(CASE WHEN event_type = 'D' THEN 1 END) as deaths,
-                COUNT(CASE WHEN event_type = 'IN' THEN 1 END) as injuries,
-                COUNT(CASE WHEN event_type = 'M' THEN 1 END) as malfunctions,
-                COUNT(CASE WHEN event_type = 'O' THEN 1 END) as other
+                COUNT(CASE WHEN event_type = '{EVENT_CODE_DEATH}' THEN 1 END) as deaths,
+                COUNT(CASE WHEN event_type = '{EVENT_CODE_INJURY}' THEN 1 END) as injuries,
+                COUNT(CASE WHEN event_type = '{EVENT_CODE_MALFUNCTION}' THEN 1 END) as malfunctions,
+                COUNT(CASE WHEN event_type = '{EVENT_CODE_OTHER}' THEN 1 END) as other
             FROM master_events m
             WHERE {where_clause}
         """
@@ -334,9 +346,9 @@ class QueryService:
             SELECT
                 {date_expr} as period,
                 COUNT(*) as total,
-                COUNT(CASE WHEN event_type = 'D' THEN 1 END) as deaths,
-                COUNT(CASE WHEN event_type = 'IN' THEN 1 END) as injuries,
-                COUNT(CASE WHEN event_type = 'M' THEN 1 END) as malfunctions
+                COUNT(CASE WHEN event_type = '{EVENT_CODE_DEATH}' THEN 1 END) as deaths,
+                COUNT(CASE WHEN event_type = '{EVENT_CODE_INJURY}' THEN 1 END) as injuries,
+                COUNT(CASE WHEN event_type = '{EVENT_CODE_MALFUNCTION}' THEN 1 END) as malfunctions
             FROM master_events m
             WHERE {where_clause}
             AND date_received IS NOT NULL
@@ -390,9 +402,9 @@ class QueryService:
             SELECT
                 manufacturer_clean,
                 COUNT(*) as total,
-                COUNT(CASE WHEN event_type = 'D' THEN 1 END) as deaths,
-                COUNT(CASE WHEN event_type = 'IN' THEN 1 END) as injuries,
-                COUNT(CASE WHEN event_type = 'M' THEN 1 END) as malfunctions
+                COUNT(CASE WHEN event_type = '{EVENT_CODE_DEATH}' THEN 1 END) as deaths,
+                COUNT(CASE WHEN event_type = '{EVENT_CODE_INJURY}' THEN 1 END) as injuries,
+                COUNT(CASE WHEN event_type = '{EVENT_CODE_MALFUNCTION}' THEN 1 END) as malfunctions
             FROM master_events
             WHERE {where_clause}
             GROUP BY manufacturer_clean

@@ -1,0 +1,771 @@
+# =============================================================================
+# MAUDE Analyzer Schema Configuration
+# =============================================================================
+# Single source of truth for database schema, column mappings, and data quality
+# thresholds. All application code should reference this configuration.
+#
+# Version: 1.0.0
+# Last Updated: 2026-01-28
+# =============================================================================
+
+schema_version: "2.1"
+
+# =============================================================================
+# TABLE DEFINITIONS
+# =============================================================================
+tables:
+  master_events:
+    description: "Primary MDR event records from FDA MAUDE database"
+    primary_key: mdr_report_key
+    row_count_threshold: 1000000  # Minimum expected records
+    columns:
+      # Key identifiers
+      mdr_report_key:
+        type: VARCHAR
+        required: true
+        description: "Unique FDA report identifier"
+      event_key:
+        type: VARCHAR
+        required: false
+        description: "Event key identifier"
+      report_number:
+        type: VARCHAR
+        required: false
+        description: "Report number"
+      report_source_code:
+        type: VARCHAR
+        required: false
+        description: "Source of the report"
+
+      # Key dates
+      date_received:
+        type: DATE
+        required: false
+        description: "Date FDA received the report"
+        coverage_threshold: 0.95
+      date_report:
+        type: DATE
+        required: false
+        description: "Date of the report"
+      date_of_event:
+        type: DATE
+        required: false
+        description: "Date when event occurred"
+        coverage_threshold: 0.50
+
+      # Event details
+      event_type:
+        type: VARCHAR
+        required: false
+        description: "Type of adverse event"
+        valid_values: ["D", "IN", "M", "O", "*"]
+        coverage_threshold: 0.98
+      event_location:
+        type: VARCHAR
+        required: false
+        description: "Location where event occurred"
+
+      # Flags
+      adverse_event_flag:
+        type: VARCHAR
+        required: false
+        description: "Whether this is an adverse event"
+        valid_values: ["Y", "N", ""]
+      product_problem_flag:
+        type: VARCHAR
+        required: false
+        description: "Whether there was a product problem"
+        valid_values: ["Y", "N", ""]
+      health_professional:
+        type: VARCHAR
+        required: false
+        description: "Whether reporter is a health professional"
+        valid_values: ["Y", "N", ""]
+      single_use_flag:
+        type: VARCHAR
+        required: false
+        description: "Whether device is single use"
+        valid_values: ["Y", "N", ""]
+
+      # Manufacturer info
+      manufacturer_name:
+        type: VARCHAR
+        required: false
+        description: "Original manufacturer name from FDA"
+        coverage_threshold: 0.90
+      manufacturer_clean:
+        type: VARCHAR
+        required: false
+        description: "Standardized manufacturer name"
+        coverage_threshold: 0.50
+        aliases:
+          - manufacturer_standardized
+          - mfr_clean
+
+      # Product identification
+      product_code:
+        type: VARCHAR
+        required: false
+        description: "FDA product code"
+        coverage_threshold: 0.85
+
+      # Derived fields
+      event_year:
+        type: INTEGER
+        required: false
+        description: "Year extracted from date_received"
+        derived_from: date_received
+      event_month:
+        type: INTEGER
+        required: false
+        description: "Month extracted from date_received"
+        derived_from: date_received
+      received_year:
+        type: INTEGER
+        required: false
+        description: "Year from date_received"
+        derived_from: date_received
+      received_month:
+        type: INTEGER
+        required: false
+        description: "Month from date_received"
+        derived_from: date_received
+
+      # Metadata
+      created_at:
+        type: TIMESTAMP
+        required: false
+        description: "Record creation timestamp"
+      updated_at:
+        type: TIMESTAMP
+        required: false
+        description: "Record last update timestamp"
+      source_file:
+        type: VARCHAR
+        required: false
+        description: "Source file that loaded this record"
+
+  devices:
+    description: "Device information linked to MDR events"
+    primary_key: id
+    foreign_keys:
+      - column: mdr_report_key
+        references: master_events.mdr_report_key
+    columns:
+      id:
+        type: INTEGER
+        required: true
+        description: "Auto-increment primary key"
+      mdr_report_key:
+        type: VARCHAR
+        required: true
+        description: "Foreign key to master_events"
+      device_sequence_number:
+        type: INTEGER
+        required: false
+        description: "Sequence number for multiple devices"
+      brand_name:
+        type: VARCHAR
+        required: false
+        description: "Device brand name"
+        coverage_threshold: 0.80
+      generic_name:
+        type: VARCHAR
+        required: false
+        description: "Generic device name"
+        coverage_threshold: 0.70
+      model_number:
+        type: VARCHAR
+        required: false
+        description: "Device model number"
+        coverage_threshold: 0.60
+      lot_number:
+        type: VARCHAR
+        required: false
+        description: "Device lot number"
+      manufacturer_d_name:
+        type: VARCHAR
+        required: false
+        description: "Device manufacturer name"
+      manufacturer_d_clean:
+        type: VARCHAR
+        required: false
+        description: "Standardized device manufacturer name"
+      device_report_product_code:
+        type: VARCHAR
+        required: false
+        description: "Product code for this device"
+      implant_flag:
+        type: VARCHAR
+        required: false
+        description: "Whether device is implanted"
+        valid_values: ["Y", "N", ""]
+      created_at:
+        type: TIMESTAMP
+        required: false
+        description: "Record creation timestamp"
+      updated_at:
+        type: TIMESTAMP
+        required: false
+        description: "Record last update timestamp"
+
+  patients:
+    description: "Patient information linked to MDR events"
+    primary_key: id
+    foreign_keys:
+      - column: mdr_report_key
+        references: master_events.mdr_report_key
+    columns:
+      id:
+        type: INTEGER
+        required: true
+        description: "Auto-increment primary key"
+      mdr_report_key:
+        type: VARCHAR
+        required: true
+        description: "Foreign key to master_events"
+      patient_sequence_number:
+        type: INTEGER
+        required: false
+        description: "Sequence number for multiple patients"
+      date_received:
+        type: DATE
+        required: false
+        description: "Date received"
+      patient_age:
+        type: VARCHAR
+        required: false
+        description: "Patient age as string"
+        coverage_threshold: 0.30
+      patient_sex:
+        type: VARCHAR
+        required: false
+        description: "Patient sex"
+        valid_values: ["M", "F", "U", "Male", "Female", "Unknown", ""]
+        coverage_threshold: 0.40
+      patient_weight:
+        type: VARCHAR
+        required: false
+        description: "Patient weight"
+        coverage_threshold: 0.10
+        sparse: true
+      patient_ethnicity:
+        type: VARCHAR
+        required: false
+        description: "Patient ethnicity"
+        coverage_threshold: 0.05
+        sparse: true
+      patient_race:
+        type: VARCHAR
+        required: false
+        description: "Patient race"
+        coverage_threshold: 0.05
+        sparse: true
+
+      # Derived age fields
+      patient_age_numeric:
+        type: DECIMAL
+        required: false
+        description: "Numeric age for analysis"
+        derived_from: patient_age
+      patient_age_unit:
+        type: VARCHAR
+        required: false
+        description: "Age unit (years, months, days)"
+        derived_from: patient_age
+
+      # Outcome flags
+      outcome_death:
+        type: BOOLEAN
+        required: false
+        description: "Patient death outcome"
+        default: false
+      outcome_life_threatening:
+        type: BOOLEAN
+        required: false
+        description: "Life threatening outcome"
+        default: false
+      outcome_hospitalization:
+        type: BOOLEAN
+        required: false
+        description: "Hospitalization required"
+        default: false
+      outcome_disability:
+        type: BOOLEAN
+        required: false
+        description: "Disability outcome"
+        default: false
+      outcome_congenital_anomaly:
+        type: BOOLEAN
+        required: false
+        description: "Congenital anomaly outcome"
+        default: false
+      outcome_required_intervention:
+        type: BOOLEAN
+        required: false
+        description: "Required intervention outcome"
+        default: false
+      outcome_other:
+        type: BOOLEAN
+        required: false
+        description: "Other outcome"
+        default: false
+
+      # Metadata
+      created_at:
+        type: TIMESTAMP
+        required: false
+        description: "Record creation timestamp"
+      updated_at:
+        type: TIMESTAMP
+        required: false
+        description: "Record last update timestamp (to be added)"
+
+  mdr_text:
+    description: "Narrative text records for MDR events"
+    primary_key: id
+    foreign_keys:
+      - column: mdr_report_key
+        references: master_events.mdr_report_key
+    columns:
+      id:
+        type: INTEGER
+        required: true
+        description: "Auto-increment primary key"
+      mdr_report_key:
+        type: VARCHAR
+        required: true
+        description: "Foreign key to master_events"
+      mdr_text_key:
+        type: VARCHAR
+        required: false
+        description: "Unique text record key"
+      text_type_code:
+        type: VARCHAR
+        required: false
+        description: "Type of narrative text"
+        valid_values: ["D", "E", "N", "H", "A", "B", "C", "F", "R", "M", ""]
+      patient_sequence_number:
+        type: INTEGER
+        required: false
+        description: "Patient sequence for patient-specific text"
+      text_content:
+        type: TEXT
+        required: false
+        description: "Narrative text content"
+        coverage_threshold: 0.95
+      date_report:
+        type: DATE
+        required: false
+        description: "Date of report"
+      created_at:
+        type: TIMESTAMP
+        required: false
+        description: "Record creation timestamp"
+      updated_at:
+        type: TIMESTAMP
+        required: false
+        description: "Record last update timestamp"
+
+  device_problems:
+    description: "Device problem codes linked to MDR events"
+    primary_key: id
+    foreign_keys:
+      - column: mdr_report_key
+        references: master_events.mdr_report_key
+    columns:
+      id:
+        type: INTEGER
+        required: true
+        description: "Auto-increment primary key"
+      mdr_report_key:
+        type: VARCHAR
+        required: true
+        description: "Foreign key to master_events"
+      device_problem_code:
+        type: VARCHAR
+        required: false
+        description: "Problem code"
+      date_added:
+        type: DATE
+        required: false
+        description: "Date problem was added"
+      created_at:
+        type: TIMESTAMP
+        required: false
+        description: "Record creation timestamp"
+
+  patient_problems:
+    description: "Patient problem codes linked to MDR events"
+    primary_key: id
+    foreign_keys:
+      - column: mdr_report_key
+        references: master_events.mdr_report_key
+    columns:
+      id:
+        type: INTEGER
+        required: true
+        description: "Auto-increment primary key"
+      mdr_report_key:
+        type: VARCHAR
+        required: true
+        description: "Foreign key to master_events"
+      patient_sequence_number:
+        type: INTEGER
+        required: false
+        description: "Patient sequence number"
+      patient_problem_code:
+        type: VARCHAR
+        required: false
+        description: "Patient problem code"
+      date_added:
+        type: TIMESTAMP
+        required: false
+        description: "Date problem was added"
+      date_changed:
+        type: TIMESTAMP
+        required: false
+        description: "Date problem was changed"
+      created_at:
+        type: TIMESTAMP
+        required: false
+        description: "Record creation timestamp"
+
+# =============================================================================
+# LOOKUP TABLES
+# =============================================================================
+lookup_tables:
+  product_codes:
+    description: "FDA product code reference data"
+    primary_key: product_code
+    columns:
+      product_code:
+        type: VARCHAR
+        required: true
+      device_name:
+        type: VARCHAR
+        required: false
+      device_class:
+        type: VARCHAR
+        required: false
+      medical_specialty:
+        type: VARCHAR
+        required: false
+
+  problem_codes:
+    description: "Device problem code reference data"
+    primary_key: problem_code
+    columns:
+      problem_code:
+        type: VARCHAR
+        required: true
+      description:
+        type: VARCHAR
+        required: false
+
+  patient_problem_codes:
+    description: "Patient problem code reference data"
+    primary_key: problem_code
+    columns:
+      problem_code:
+        type: VARCHAR
+        required: true
+      description:
+        type: VARCHAR
+        required: false
+
+  manufacturers:
+    description: "Manufacturer standardization lookup"
+    primary_key: id
+    columns:
+      id:
+        type: INTEGER
+        required: true
+      raw_name:
+        type: VARCHAR
+        required: false
+      clean_name:
+        type: VARCHAR
+        required: false
+      parent_company:
+        type: VARCHAR
+        required: false
+
+# =============================================================================
+# EVENT TYPE MAPPINGS
+# =============================================================================
+event_types:
+  codes:
+    D:
+      name: "Death"
+      description: "Patient death associated with device"
+      severity: 1
+      color: "#dc2626"  # red-600
+      bg_color: "bg-red-100"
+      text_color: "text-red-800"
+    IN:
+      name: "Injury"
+      description: "Patient injury associated with device"
+      severity: 2
+      color: "#ea580c"  # orange-600
+      bg_color: "bg-orange-100"
+      text_color: "text-orange-800"
+    M:
+      name: "Malfunction"
+      description: "Device malfunction"
+      severity: 3
+      color: "#ca8a04"  # yellow-600
+      bg_color: "bg-yellow-100"
+      text_color: "text-yellow-800"
+    O:
+      name: "Other"
+      description: "Other event type"
+      severity: 4
+      color: "#6b7280"  # gray-500
+      bg_color: "bg-gray-100"
+      text_color: "text-gray-800"
+    "*":
+      name: "Unknown"
+      description: "No answer provided"
+      severity: 5
+      color: "#9ca3af"  # gray-400
+      bg_color: "bg-gray-50"
+      text_color: "text-gray-600"
+
+  # Filter bar uses different code for injury
+  filter_code_mapping:
+    I: "IN"  # Filter uses I, database uses IN
+    D: "D"
+    M: "M"
+    O: "O"
+
+# =============================================================================
+# PATIENT OUTCOME MAPPINGS
+# =============================================================================
+outcome_codes:
+  D:
+    name: "Death"
+    field: outcome_death
+    severity: 1
+    color: "bg-red-100 text-red-800"
+  L:
+    name: "Life Threatening"
+    field: outcome_life_threatening
+    severity: 2
+    color: "bg-yellow-100 text-yellow-800"
+  H:
+    name: "Hospitalization"
+    field: outcome_hospitalization
+    severity: 3
+    color: "bg-orange-100 text-orange-800"
+  DS:
+    name: "Disability"
+    field: outcome_disability
+    severity: 4
+    color: "bg-purple-100 text-purple-800"
+  CA:
+    name: "Congenital Anomaly"
+    field: outcome_congenital_anomaly
+    severity: 5
+    color: "bg-pink-100 text-pink-800"
+  RI:
+    name: "Required Intervention"
+    field: outcome_required_intervention
+    severity: 6
+    color: "bg-blue-100 text-blue-800"
+  OT:
+    name: "Other"
+    field: outcome_other
+    severity: 7
+    color: "bg-gray-100 text-gray-800"
+
+# =============================================================================
+# TEXT TYPE MAPPINGS
+# =============================================================================
+text_type_codes:
+  D:
+    name: "Event Description"
+    description: "Primary event description narrative"
+    priority: 1
+  H:
+    name: "Event History"
+    description: "Historical context of event"
+    priority: 2
+  M:
+    name: "Manufacturer Narrative"
+    description: "Manufacturer's description"
+    priority: 3
+  E:
+    name: "Evaluation Summary"
+    description: "Evaluation/assessment summary"
+    priority: 4
+  N:
+    name: "Additional Information"
+    description: "Additional notes and information"
+    priority: 5
+
+# =============================================================================
+# COLUMN ALIASES
+# =============================================================================
+# Maps alternative column names to canonical names
+column_aliases:
+  manufacturer:
+    canonical: manufacturer_clean
+    alternatives:
+      - manufacturer_name
+      - mfr_name
+      - manufacturer_standardized
+
+  product_code:
+    canonical: product_code
+    alternatives:
+      - device_report_product_code
+      - prod_code
+
+  event_type:
+    canonical: event_type
+    alternatives:
+      - event_type_code
+      - evt_type
+
+  date_received:
+    canonical: date_received
+    alternatives:
+      - recv_date
+      - received_date
+
+# =============================================================================
+# DATA QUALITY THRESHOLDS
+# =============================================================================
+data_quality:
+  # Global thresholds
+  global:
+    sparse_column_threshold: 0.20  # <20% coverage = sparse
+    well_populated_threshold: 0.80  # >80% coverage = well populated
+    critical_column_threshold: 0.95  # Required for critical columns
+
+  # Per-table thresholds
+  tables:
+    master_events:
+      min_records: 1000000
+      max_orphan_rate: 0.001
+      required_columns:
+        - mdr_report_key
+        - date_received
+        - event_type
+
+    devices:
+      min_records: 500000
+      required_columns:
+        - mdr_report_key
+        - brand_name
+
+    patients:
+      min_records: 500000
+      required_columns:
+        - mdr_report_key
+
+    mdr_text:
+      min_records: 1000000
+      required_columns:
+        - mdr_report_key
+        - text_content
+
+  # Columns known to be sparse (informational, not errors)
+  known_sparse_columns:
+    - patient_weight
+    - patient_ethnicity
+    - patient_race
+    - device_age_text
+    - other_id_number
+
+# =============================================================================
+# SIGNAL DETECTION THRESHOLDS
+# =============================================================================
+signal_detection:
+  default:
+    min_events: 10
+    lookback_months: 12
+    z_score_high: 2.0
+    z_score_elevated: 1.5
+
+  # Configurable by analysis type
+  death_signals:
+    min_events: 5
+    lookback_months: 24
+    z_score_high: 1.5
+    z_score_elevated: 1.0
+
+  manufacturer_comparison:
+    min_events: 20
+    lookback_months: 12
+
+# =============================================================================
+# INDEX DEFINITIONS
+# =============================================================================
+indexes:
+  master_events:
+    - name: idx_master_product_code
+      columns: [product_code]
+    - name: idx_master_manufacturer
+      columns: [manufacturer_clean]
+    - name: idx_master_date_received
+      columns: [date_received]
+    - name: idx_master_event_type
+      columns: [event_type]
+    - name: idx_master_year_month
+      columns: [received_year, received_month]
+
+  devices:
+    - name: idx_devices_mdr_key
+      columns: [mdr_report_key]
+    - name: idx_devices_brand
+      columns: [brand_name]
+    - name: idx_devices_manufacturer
+      columns: [manufacturer_d_clean]
+
+  patients:
+    - name: idx_patients_mdr_key
+      columns: [mdr_report_key]
+    - name: idx_patients_outcomes
+      columns: [outcome_death, outcome_hospitalization]
+
+  mdr_text:
+    - name: idx_text_mdr_key
+      columns: [mdr_report_key]
+    - name: idx_text_type
+      columns: [text_type_code]
+
+# =============================================================================
+# RELATIONSHIPS
+# =============================================================================
+relationships:
+  master_to_devices:
+    parent: master_events
+    child: devices
+    join_column: mdr_report_key
+    cardinality: one_to_many
+
+  master_to_patients:
+    parent: master_events
+    child: patients
+    join_column: mdr_report_key
+    cardinality: one_to_many
+
+  master_to_text:
+    parent: master_events
+    child: mdr_text
+    join_column: mdr_report_key
+    cardinality: one_to_many
+
+  master_to_device_problems:
+    parent: master_events
+    child: device_problems
+    join_column: mdr_report_key
+    cardinality: one_to_many
+
+  master_to_patient_problems:
+    parent: master_events
+    child: patient_problems
+    join_column: mdr_report_key
+    cardinality: one_to_many

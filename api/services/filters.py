@@ -3,6 +3,8 @@
 from typing import Optional
 from datetime import date
 
+from api.constants.columns import EVENT_TYPE_FILTER_MAPPING
+
 
 def build_filter_clause(
     manufacturers: Optional[list[str]] = None,
@@ -41,9 +43,8 @@ def build_filter_clause(
         params.extend(product_codes)
 
     if event_types:
-        # Map display values to database values
-        type_map = {"D": "D", "I": "IN", "M": "M", "O": "O"}
-        db_types = [type_map.get(t, t) for t in event_types]
+        # Map filter codes to database codes (e.g., I -> IN for injury)
+        db_types = [EVENT_TYPE_FILTER_MAPPING.get(t, t) for t in event_types]
         placeholders = ", ".join(["?" for _ in db_types])
         conditions.append(f"{table_alias}.event_type IN ({placeholders})")
         params.extend(db_types)

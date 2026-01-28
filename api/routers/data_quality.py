@@ -10,10 +10,11 @@ Provides endpoints for monitoring data completeness and quality:
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 import sys
 from pathlib import Path
+import yaml
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -529,5 +530,270 @@ async def get_summary():
                 "health_status": "healthy" if (mfr_stats[1] / total) > 0.9 else "degraded",
             }
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Schema Health Endpoint
+# =============================================================================
+
+class ColumnCoverage(BaseModel):
+    """Coverage information for a column."""
+    name: str
+    exists: bool
+    coverage_pct: Optional[float] = None
+    threshold: Optional[float] = None
+    passes_threshold: bool = True
+    is_sparse: bool = False
+
+
+class TableHealth(BaseModel):
+    """Health information for a table."""
+    name: str
+    exists: bool
+    row_count: int = 0
+    expected_min_rows: int = 0
+    passes_row_threshold: bool = True
+    missing_columns: List[str] = []
+    sparse_columns: List[str] = []
+    column_coverage: List[ColumnCoverage] = []
+    issues: List[str] = []
+
+
+class SchemaHealthResponse(BaseModel):
+    """Response for schema health endpoint."""
+    timestamp: str
+    config_version: str
+    overall_status: str  # "healthy", "warning", "critical"
+    tables: List[TableHealth]
+    total_issues: int
+    recommendations: List[str]
+
+
+@router.get("/schema-health", response_model=SchemaHealthResponse)
+async def get_schema_health(
+    check_coverage: bool = Query(True, description="Check column coverage thresholds"),
+):
+    """
+    Validate database schema against schema_config.yaml.
+
+    Returns:
+    - Missing columns
+    - Column coverage metrics
+    - Sparse columns (<20% populated)
+    - Row count validation
+    - Recommendations for improvement
+    """
+    try:
+        # Load schema config
+        config_path = PROJECT_ROOT / "config" / "schema_config.yaml"
+        if not config_path.exists():
+            raise HTTPException(status_code=500, detail="Schema config not found")
+
+        with open(config_path) as f:
+            schema_config = yaml.safe_load(f)
+
+        tables_health: List[TableHealth] = []
+        all_issues: List[str] = []
+        recommendations: List[str] = []
+
+        with get_connection(read_only=True) as conn:
+            # Validate each table defined in config
+            tables_config = schema_config.get("tables", {})
+
+            for table_name, table_def in tables_config.items():
+                table_health = TableHealth(
+                    name=table_name,
+                    exists=False,
+                    expected_min_rows=table_def.get("row_count_threshold", 0),
+                )
+
+                # Check if table exists
+                try:
+                    result = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+                    table_health.exists = True
+                    table_health.row_count = result[0] if result else 0
+                except Exception:
+                    table_health.issues.append(f"Table {table_name} does not exist")
+                    all_issues.append(f"Missing table: {table_name}")
+                    tables_health.append(table_health)
+                    continue
+
+                # Check row count threshold
+                if table_health.row_count < table_health.expected_min_rows:
+                    table_health.passes_row_threshold = False
+                    table_health.issues.append(
+                        f"Row count ({table_health.row_count:,}) below threshold ({table_health.expected_min_rows:,})"
+                    )
+
+                # Get actual columns
+                actual_cols = conn.execute(f"DESCRIBE {table_name}").fetchall()
+                actual_col_names = {row[0] for row in actual_cols}
+
+                # Check expected columns
+                columns_config = table_def.get("columns", {})
+                for col_name, col_def in columns_config.items():
+                    col_coverage = ColumnCoverage(
+                        name=col_name,
+                        exists=col_name in actual_col_names,
+                    )
+
+                    if not col_coverage.exists:
+                        table_health.missing_columns.append(col_name)
+                        if col_def.get("required", False):
+                            table_health.issues.append(f"Missing required column: {col_name}")
+                            all_issues.append(f"{table_name}: missing required column {col_name}")
+                    elif check_coverage and table_health.row_count > 0:
+                        # Calculate coverage
+                        try:
+                            coverage_result = conn.execute(f"""
+                                SELECT COUNT(*)
+                                FROM {table_name}
+                                WHERE {col_name} IS NOT NULL
+                                  AND CAST({col_name} AS VARCHAR) != ''
+                            """).fetchone()
+                            covered = coverage_result[0] if coverage_result else 0
+                            col_coverage.coverage_pct = round((covered / table_health.row_count) * 100, 1)
+
+                            # Check threshold
+                            threshold = col_def.get("coverage_threshold")
+                            if threshold is not None:
+                                col_coverage.threshold = threshold * 100
+                                col_coverage.passes_threshold = (col_coverage.coverage_pct / 100) >= threshold
+                                if not col_coverage.passes_threshold:
+                                    table_health.issues.append(
+                                        f"Column {col_name} coverage ({col_coverage.coverage_pct}%) below threshold ({col_coverage.threshold}%)"
+                                    )
+
+                            # Mark sparse columns
+                            if col_coverage.coverage_pct < 20:
+                                col_coverage.is_sparse = True
+                                if col_name not in schema_config.get("data_quality", {}).get("known_sparse_columns", []):
+                                    table_health.sparse_columns.append(col_name)
+
+                        except Exception:
+                            pass  # Column might not be text-castable
+
+                    table_health.column_coverage.append(col_coverage)
+
+                tables_health.append(table_health)
+
+        # Determine overall status
+        critical_issues = sum(1 for t in tables_health if not t.exists or t.missing_columns)
+        warning_issues = sum(1 for t in tables_health if t.issues and t.exists)
+
+        if critical_issues > 0:
+            overall_status = "critical"
+        elif warning_issues > 0:
+            overall_status = "warning"
+        else:
+            overall_status = "healthy"
+
+        # Generate recommendations
+        for table in tables_health:
+            if not table.exists:
+                recommendations.append(f"Create missing table: {table.name}")
+            elif table.missing_columns:
+                recommendations.append(f"Add missing columns to {table.name}: {', '.join(table.missing_columns)}")
+            if table.sparse_columns:
+                recommendations.append(f"Investigate sparse columns in {table.name}: {', '.join(table.sparse_columns[:3])}")
+
+        return SchemaHealthResponse(
+            timestamp=datetime.now().isoformat(),
+            config_version=schema_config.get("schema_version", "unknown"),
+            overall_status=overall_status,
+            tables=tables_health,
+            total_issues=len(all_issues),
+            recommendations=recommendations[:10],  # Limit to top 10
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/column-coverage/{table_name}")
+async def get_column_coverage(
+    table_name: str,
+    min_coverage: float = Query(0.0, ge=0, le=1, description="Minimum coverage filter"),
+):
+    """
+    Get detailed column coverage for a specific table.
+
+    Returns coverage percentage for every column in the table,
+    optionally filtered by minimum coverage threshold.
+    """
+    try:
+        with get_connection(read_only=True) as conn:
+            # Verify table exists
+            try:
+                total_result = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+                total_rows = total_result[0] if total_result else 0
+            except Exception:
+                raise HTTPException(status_code=404, detail=f"Table {table_name} not found")
+
+            if total_rows == 0:
+                return {
+                    "timestamp": datetime.now().isoformat(),
+                    "table": table_name,
+                    "row_count": 0,
+                    "columns": [],
+                }
+
+            # Get all columns
+            columns = conn.execute(f"DESCRIBE {table_name}").fetchall()
+
+            coverage_data = []
+            for col in columns:
+                col_name = col[0]
+                col_type = col[1]
+
+                try:
+                    covered_result = conn.execute(f"""
+                        SELECT COUNT(*)
+                        FROM {table_name}
+                        WHERE {col_name} IS NOT NULL
+                          AND CAST({col_name} AS VARCHAR) != ''
+                    """).fetchone()
+                    covered = covered_result[0] if covered_result else 0
+                    coverage_pct = covered / total_rows
+
+                    if coverage_pct >= min_coverage:
+                        coverage_data.append({
+                            "name": col_name,
+                            "type": col_type,
+                            "non_null_count": covered,
+                            "null_count": total_rows - covered,
+                            "coverage_pct": round(coverage_pct * 100, 2),
+                            "is_sparse": coverage_pct < 0.2,
+                            "is_well_populated": coverage_pct >= 0.8,
+                        })
+                except Exception:
+                    # Some columns might not support casting
+                    coverage_data.append({
+                        "name": col_name,
+                        "type": col_type,
+                        "non_null_count": None,
+                        "null_count": None,
+                        "coverage_pct": None,
+                        "is_sparse": None,
+                        "is_well_populated": None,
+                    })
+
+            # Sort by coverage descending
+            coverage_data.sort(key=lambda x: x.get("coverage_pct") or 0, reverse=True)
+
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "table": table_name,
+                "row_count": total_rows,
+                "column_count": len(columns),
+                "columns": coverage_data,
+            }
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

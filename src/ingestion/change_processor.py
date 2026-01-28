@@ -323,12 +323,11 @@ class ChangeProcessor:
             if not set_parts:
                 continue
 
-            # Update timestamp column to track changes (if table has one)
+            # Update timestamp column to track changes
             if file_type == "master":
                 set_parts.append("date_changed = CURRENT_TIMESTAMP")
-            elif file_type in ["device", "text"]:
+            elif file_type in ["device", "text", "patient"]:
                 set_parts.append("updated_at = CURRENT_TIMESTAMP")
-            # Note: patients table only has created_at, no update timestamp column
 
             # Add primary key values for WHERE clause
             values.extend(pk_values)

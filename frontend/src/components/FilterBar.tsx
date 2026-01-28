@@ -2,13 +2,7 @@ import { useState } from 'react'
 import { Search, X, Filter } from 'lucide-react'
 import { useFilters } from '../hooks/useFilters'
 import { useManufacturers, useProductCodes } from '../hooks/useEvents'
-
-const EVENT_TYPES = [
-  { value: 'D', label: 'Death' },
-  { value: 'I', label: 'Injury' },
-  { value: 'M', label: 'Malfunction' },
-  { value: 'O', label: 'Other' },
-]
+import { EVENT_TYPE_OPTIONS } from '../constants/schema'
 
 export default function FilterBar() {
   const {
@@ -151,7 +145,7 @@ export default function FilterBar() {
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Event Type</label>
           <div className="flex flex-wrap gap-2">
-            {EVENT_TYPES.map((type) => (
+            {EVENT_TYPE_OPTIONS.map((type) => (
               <button
                 key={type.value}
                 onClick={() => toggleEventType(type.value)}

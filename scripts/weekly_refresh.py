@@ -53,6 +53,7 @@ from src.ingestion import (
 )
 from src.ingestion.fda_discovery import FDADiscovery, DiscoveryResult
 from src.ingestion.change_processor import ChangeProcessor, process_all_change_files
+from scripts.validate_schema import SchemaValidator, format_validation_report
 
 
 def check_for_updates(discovery: FDADiscovery, logger) -> DiscoveryResult:
@@ -290,6 +291,53 @@ def validate_data(
         print_validation_report(report)
 
     return report.passed
+
+
+def validate_schema(
+    db_path: Path,
+    logger,
+    check_coverage: bool = False,
+) -> bool:
+    """
+    Validate database schema against schema_config.yaml.
+
+    Args:
+        db_path: Path to database.
+        logger: Logger instance.
+        check_coverage: Whether to check data coverage thresholds.
+
+    Returns:
+        True if schema validation passed.
+    """
+    logger.info("\nValidating schema against configuration...")
+
+    try:
+        validator = SchemaValidator(str(db_path))
+        validator.load_config()
+        validator.connect()
+
+        result = validator.validate(check_coverage=check_coverage)
+        validator.close()
+
+        if result.is_valid:
+            logger.info("Schema validation passed")
+            logger.info(f"  Config version: {result.config_version}")
+            logger.info(f"  Tables validated: {len(result.tables)}")
+        else:
+            logger.warning("Schema validation found issues")
+            report = format_validation_report(result, verbose=False)
+            for line in report.split("\n"):
+                if line.strip():
+                    logger.warning(f"  {line}")
+
+        return result.is_valid
+
+    except FileNotFoundError as e:
+        logger.warning(f"Schema config not found, skipping validation: {e}")
+        return True
+    except Exception as e:
+        logger.error(f"Schema validation error: {e}")
+        return False
 
 
 def update_data_freshness(
@@ -592,9 +640,18 @@ def main():
             logger.info("\n[Skipping validation]")
             validation_passed = True
 
-        # Step 5b: Update data freshness tracking
+        # Step 5b: Schema validation
         logger.info("\n" + "-" * 40)
-        logger.info("STEP 5b: Updating data freshness")
+        logger.info("STEP 5b: Validating schema against configuration")
+        logger.info("-" * 40)
+
+        schema_valid = validate_schema(args.db, logger, check_coverage=False)
+        if not schema_valid:
+            logger.warning("Schema validation found issues - review schema_config.yaml")
+
+        # Step 5c: Update data freshness tracking
+        logger.info("\n" + "-" * 40)
+        logger.info("STEP 5c: Updating data freshness")
         logger.info("-" * 40)
 
         update_data_freshness(args.db, logger)

@@ -1,13 +1,7 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react'
 import { useEvents, useEventDetail } from '../hooks/useEvents'
-
-const EVENT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  D: { label: 'Death', color: 'bg-red-100 text-red-800' },
-  IN: { label: 'Injury', color: 'bg-orange-100 text-orange-800' },
-  M: { label: 'Malfunction', color: 'bg-yellow-100 text-yellow-800' },
-  O: { label: 'Other', color: 'bg-gray-100 text-gray-800' },
-}
+import { EVENT_TYPE_LABELS, OUTCOME_BADGES, getEventTypeDisplay } from '../constants/schema'
 
 interface EventDetailModalProps {
   mdrReportKey: string
@@ -108,17 +102,16 @@ function EventDetailModal({ mdrReportKey, onClose }: EventDetailModalProps) {
                           Patient {patient.sequence || i + 1}: {patient.sex || 'Unknown'}, Age: {patient.age || 'Unknown'}
                         </p>
                         <div className="flex gap-2 mt-1">
-                          {patient.outcomes.death && (
-                            <span className="text-xs px-2 py-1 bg-red-100 text-red-800 rounded">Death</span>
-                          )}
-                          {patient.outcomes.hospitalization && (
-                            <span className="text-xs px-2 py-1 bg-orange-100 text-orange-800 rounded">Hospitalization</span>
-                          )}
-                          {patient.outcomes.life_threatening && (
-                            <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded">Life Threatening</span>
-                          )}
-                          {patient.outcomes.disability && (
-                            <span className="text-xs px-2 py-1 bg-purple-100 text-purple-800 rounded">Disability</span>
+                          {OUTCOME_BADGES.map(
+                            (badge) =>
+                              patient.outcomes[badge.key] && (
+                                <span
+                                  key={badge.key}
+                                  className={`text-xs px-2 py-1 ${badge.colorClass} rounded`}
+                                >
+                                  {badge.label}
+                                </span>
+                              )
                           )}
                         </div>
                       </div>
@@ -204,7 +197,7 @@ export default function EventsTable() {
               </tr>
             ) : (
               events.map((event) => {
-                const typeInfo = EVENT_TYPE_LABELS[event.event_type || ''] || { label: event.event_type || 'Unknown', color: 'bg-gray-100 text-gray-800' }
+                const typeInfo = getEventTypeDisplay(event.event_type || '')
                 return (
                   <tr key={event.mdr_report_key} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm text-gray-900">{event.report_number || event.mdr_report_key}</td>
