@@ -351,19 +351,21 @@ def update_data_freshness(
                     status = "VERY_STALE"
 
                 # Upsert into data_freshness table
+                # Use now() instead of CURRENT_TIMESTAMP to avoid DuckDB binding issues
+                now = datetime.now()
                 conn.execute("""
                     INSERT INTO data_freshness (
                         table_name, last_successful_load, latest_record_date,
                         days_since_update, record_count, status, updated_at
-                    ) VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (table_name) DO UPDATE SET
-                        last_successful_load = CURRENT_TIMESTAMP,
+                        last_successful_load = excluded.last_successful_load,
                         latest_record_date = excluded.latest_record_date,
                         days_since_update = excluded.days_since_update,
                         record_count = excluded.record_count,
                         status = excluded.status,
-                        updated_at = CURRENT_TIMESTAMP
-                """, [table_name, latest_date, days_old, record_count, status])
+                        updated_at = excluded.updated_at
+                """, [table_name, now, latest_date, days_old, record_count, status, now])
 
                 logger.debug(f"  {table_name}: {record_count:,} records, latest: {latest_date}, status: {status}")
 
