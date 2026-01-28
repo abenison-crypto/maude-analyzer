@@ -289,6 +289,20 @@ class ChangeProcessor:
                 pk_values
             ).fetchone()
 
+            # For patient records: try fallback to NULL sequence if exact match not found
+            # (Historical data may have NULL patient_sequence_number)
+            use_null_seq_fallback = False
+            if not existing and file_type == "patient" and pk_values[1] == 1:
+                fallback_result = conn.execute(
+                    f"SELECT 1 FROM {table_name} WHERE mdr_report_key = ? AND patient_sequence_number IS NULL",
+                    [pk_values[0]]
+                ).fetchone()
+                if fallback_result:
+                    existing = fallback_result
+                    use_null_seq_fallback = True
+                    where_clause = "mdr_report_key = ? AND patient_sequence_number IS NULL"
+                    pk_values = [pk_values[0]]  # Only use mdr_report_key for WHERE
+
             if not existing:
                 stats["not_found"] += 1
                 continue
@@ -309,11 +323,12 @@ class ChangeProcessor:
             if not set_parts:
                 continue
 
-            # Always update timestamp column to track changes
-            if file_type in ["master", "patient"]:
+            # Update timestamp column to track changes (if table has one)
+            if file_type == "master":
                 set_parts.append("date_changed = CURRENT_TIMESTAMP")
             elif file_type in ["device", "text"]:
                 set_parts.append("updated_at = CURRENT_TIMESTAMP")
+            # Note: patients table only has created_at, no update timestamp column
 
             # Add primary key values for WHERE clause
             values.extend(pk_values)

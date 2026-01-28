@@ -5,8 +5,8 @@ Weekly Data Refresh Script for MAUDE Analyzer.
 This script performs the complete weekly refresh cycle:
 1. Check for new FDA files (using HTTP HEAD for Last-Modified)
 2. Download new/updated files
-3. Process CHANGE files first (updates to existing records)
-4. Process ADD files (new records)
+3. Process ADD files (new records)
+4. Process CHANGE files (updates to existing records)
 5. Re-load current year files (handles corrections)
 6. Validate data integrity
 7. Generate summary report
@@ -557,16 +557,9 @@ def main():
         else:
             logger.info("\n[No files need downloading]")
 
-        # Step 3: Process CHANGE files (updates to existing records)
+        # Step 3: Load ADD and current year files (must come before CHANGE)
         logger.info("\n" + "-" * 40)
-        logger.info("STEP 3: Processing CHANGE files")
-        logger.info("-" * 40)
-
-        change_results = process_change_files(args.data_dir, args.db, logger)
-
-        # Step 4: Load ADD and current year files
-        logger.info("\n" + "-" * 40)
-        logger.info("STEP 4: Loading data files")
+        logger.info("STEP 3: Loading data files")
         logger.info("-" * 40)
 
         # Parse filter codes
@@ -580,6 +573,13 @@ def main():
             filter_codes=filter_codes,
             logger=logger,
         )
+
+        # Step 4: Process CHANGE files (updates to existing records)
+        logger.info("\n" + "-" * 40)
+        logger.info("STEP 4: Processing CHANGE files")
+        logger.info("-" * 40)
+
+        change_results = process_change_files(args.data_dir, args.db, logger)
 
         # Step 5: Validate
         if not args.skip_validation:
