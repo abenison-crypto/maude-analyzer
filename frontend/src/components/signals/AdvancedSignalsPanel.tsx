@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
-import { AlertTriangle, TrendingUp, Calendar, Settings, Filter } from 'lucide-react'
+import { AlertTriangle, TrendingUp, Calendar, Settings, Filter, Layers } from 'lucide-react'
 import { useAdvancedSignals } from '../../hooks/useAdvancedSignals'
 import { useAdvancedFilters } from '../../hooks/useAdvancedFilters'
+import { useActiveEntityGroups } from '../../hooks/useEntityGroups'
 import SignalMethodSelector from './SignalMethodSelector'
 import TimePeriodConfigurator from './TimePeriodConfigurator'
 import SignalBreadcrumb from './SignalBreadcrumb'
@@ -34,6 +35,9 @@ export default function AdvancedSignalsPanel() {
   // Global filters
   const { filters, hasActiveFilters, activeFilterCount } = useAdvancedFilters()
 
+  // Entity groups
+  const { queryGroups, activeGroupCount } = useActiveEntityGroups('manufacturer')
+
   // State
   const [methods, setMethods] = useState<SignalMethod[]>(['zscore'])
   const [timeConfig, setTimeConfig] = useState<TimeComparisonConfig>({
@@ -61,7 +65,7 @@ export default function AdvancedSignalsPanel() {
     return filters.eventTypes.length > 0 ? filters.eventTypes : undefined
   }, [filters.eventTypes])
 
-  // Query
+  // Query - include active entity groups
   const { data, isLoading, error } = useAdvancedSignals({
     methods,
     timeConfig,
@@ -69,6 +73,7 @@ export default function AdvancedSignalsPanel() {
     parentValue,
     productCodes,
     eventTypes,
+    activeGroups: queryGroups.length > 0 ? queryGroups : undefined,
     minEvents,
     limit: 20,
     enabled: true,
@@ -151,20 +156,22 @@ export default function AdvancedSignalsPanel() {
             {data?.time_info?.mode || 'Lookback'}
           </p>
         </div>
-        <div className={`rounded-lg p-4 border ${hasActiveFilters ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
+        <div className={`rounded-lg p-4 border ${hasActiveFilters || activeGroupCount > 0 ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
           <div className="flex items-center gap-2">
             {hasActiveFilters && <Filter className="w-4 h-4 text-purple-600" />}
-            <span className={`font-medium ${hasActiveFilters ? 'text-purple-800' : 'text-gray-800'}`}>
-              {hasActiveFilters ? 'Filtered Analysis' : 'Entities Analyzed'}
+            {activeGroupCount > 0 && <Layers className="w-4 h-4 text-purple-600" />}
+            <span className={`font-medium ${hasActiveFilters || activeGroupCount > 0 ? 'text-purple-800' : 'text-gray-800'}`}>
+              {hasActiveFilters || activeGroupCount > 0 ? 'Filtered Analysis' : 'Entities Analyzed'}
             </span>
           </div>
-          <p className={`text-2xl font-bold mt-2 ${hasActiveFilters ? 'text-purple-900' : 'text-gray-900'}`}>
+          <p className={`text-2xl font-bold mt-2 ${hasActiveFilters || activeGroupCount > 0 ? 'text-purple-900' : 'text-gray-900'}`}>
             {summary.total}
           </p>
-          <p className={`text-sm ${hasActiveFilters ? 'text-purple-600' : 'text-gray-600'}`}>
-            {hasActiveFilters
-              ? `${activeFilterCount} filter${activeFilterCount !== 1 ? 's' : ''} applied`
-              : `${methods.length} method${methods.length !== 1 ? 's' : ''}`}
+          <p className={`text-sm ${hasActiveFilters || activeGroupCount > 0 ? 'text-purple-600' : 'text-gray-600'}`}>
+            {activeGroupCount > 0 && `${activeGroupCount} group${activeGroupCount !== 1 ? 's' : ''}`}
+            {activeGroupCount > 0 && hasActiveFilters && ', '}
+            {hasActiveFilters && `${activeFilterCount} filter${activeFilterCount !== 1 ? 's' : ''}`}
+            {!hasActiveFilters && !activeGroupCount && `${methods.length} method${methods.length !== 1 ? 's' : ''}`}
           </p>
         </div>
       </div>

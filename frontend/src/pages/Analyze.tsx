@@ -4,6 +4,7 @@ import { AdvancedFilterBar } from '../components/filters'
 import TrendChart from '../components/TrendChart'
 import { AdvancedSignalsPanel } from '../components/signals'
 import TextFrequency from '../components/TextFrequency'
+import { EntityGroupsManager, GroupIndicator } from '../components/entityGroups'
 import { useManufacturerComparison, useEventTypeDistribution, useTextFrequency } from '../hooks/useAnalytics'
 import { useManufacturers } from '../hooks/useEvents'
 
@@ -12,6 +13,7 @@ const TABS = [
   { id: 'compare', label: 'Compare' },
   { id: 'distribution', label: 'Distribution' },
   { id: 'signals', label: 'Signals' },
+  { id: 'groups', label: 'Groups' },
   { id: 'text', label: 'Text' },
 ]
 
@@ -42,11 +44,14 @@ export default function AnalyzePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Analyze</h1>
-        <p className="text-gray-600 mt-1">
-          Analyze trends, compare manufacturers, and explore event patterns
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Analyze</h1>
+          <p className="text-gray-600 mt-1">
+            Analyze trends, compare manufacturers, and explore event patterns
+          </p>
+        </div>
+        <GroupIndicator />
       </div>
 
       {/* Filters */}
@@ -237,6 +242,10 @@ export default function AnalyzePage() {
 
         {activeTab === 'signals' && (
           <AdvancedSignalsPanel />
+        )}
+
+        {activeTab === 'groups' && (
+          <EntityGroupsManager entityType="manufacturer" />
         )}
 
         {activeTab === 'text' && (

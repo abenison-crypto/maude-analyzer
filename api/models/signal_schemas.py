@@ -60,6 +60,19 @@ class TimeComparisonConfig(BaseModel):
     quarter: Optional[int] = Field(default=None, ge=1, le=4)
     # For rolling mode
     rolling_window_months: int = Field(default=3, ge=1, le=24)
+    # For z-score: specific month to compare (defaults to latest month if not set)
+    comparison_month: Optional[date] = Field(
+        default=None,
+        description="Specific month to analyze for z-score (first day of month)"
+    )
+
+
+class ActiveEntityGroup(BaseModel):
+    """Active entity group for query transformation."""
+    id: str
+    display_name: str
+    members: list[str]
+    entity_type: str = "manufacturer"
 
 
 class SignalRequest(BaseModel):
@@ -95,6 +108,12 @@ class SignalRequest(BaseModel):
     comparison_filters: Optional[dict] = Field(
         default=None,
         description="Custom filters for comparison population"
+    )
+
+    # Entity groups - active groups to apply during analysis
+    active_groups: Optional[list[ActiveEntityGroup]] = Field(
+        default=None,
+        description="Active entity groups to apply. Group members are treated as a single entity."
     )
 
     # Thresholds and limits

@@ -1,4 +1,13 @@
 import type { SignalRequest, SignalResponse } from '../types/signals'
+import type {
+  EntityGroup,
+  EntityGroupListResponse,
+  CreateEntityGroupRequest,
+  UpdateEntityGroupRequest,
+  SuggestNameResponse,
+  EntityType,
+} from '../types/entityGroups'
+import { fromApiResponse, fromApiListResponse } from '../types/entityGroups'
 
 const API_BASE = '/api'
 
@@ -394,5 +403,83 @@ export const api = {
     if (filters.topN) params.set('top_n', String(filters.topN))
     if (filters.sampleSize) params.set('sample_size', String(filters.sampleSize))
     return fetchJSON(`${API_BASE}/analytics/text-frequency?${params}`)
+  },
+
+  // Entity Groups
+  getEntityGroups: async (params: {
+    entityType?: EntityType
+    includeBuiltIn?: boolean
+    activeOnly?: boolean
+  } = {}): Promise<EntityGroupListResponse> => {
+    const urlParams = new URLSearchParams()
+    if (params.entityType) urlParams.set('entity_type', params.entityType)
+    if (params.includeBuiltIn !== undefined) urlParams.set('include_built_in', String(params.includeBuiltIn))
+    if (params.activeOnly) urlParams.set('active_only', 'true')
+    const data = await fetchJSON<Record<string, unknown>>(`${API_BASE}/entity-groups?${urlParams}`)
+    return fromApiListResponse(data)
+  },
+
+  getEntityGroup: async (groupId: string): Promise<EntityGroup> => {
+    const data = await fetchJSON<Record<string, unknown>>(`${API_BASE}/entity-groups/${groupId}`)
+    return fromApiResponse(data)
+  },
+
+  createEntityGroup: async (request: CreateEntityGroupRequest): Promise<EntityGroup> => {
+    const response = await fetch(`${API_BASE}/entity-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    const data = await response.json()
+    return fromApiResponse(data)
+  },
+
+  updateEntityGroup: async (groupId: string, request: UpdateEntityGroupRequest): Promise<EntityGroup> => {
+    const response = await fetch(`${API_BASE}/entity-groups/${groupId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    const data = await response.json()
+    return fromApiResponse(data)
+  },
+
+  deleteEntityGroup: async (groupId: string): Promise<void> => {
+    const response = await fetch(`${API_BASE}/entity-groups/${groupId}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+  },
+
+  activateEntityGroup: async (groupId: string): Promise<EntityGroup> => {
+    const response = await fetch(`${API_BASE}/entity-groups/${groupId}/activate`, {
+      method: 'POST',
+    })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    const data = await response.json()
+    return fromApiResponse(data)
+  },
+
+  deactivateEntityGroup: async (groupId: string): Promise<EntityGroup> => {
+    const response = await fetch(`${API_BASE}/entity-groups/${groupId}/deactivate`, {
+      method: 'POST',
+    })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    const data = await response.json()
+    return fromApiResponse(data)
+  },
+
+  suggestGroupName: async (members: string[]): Promise<SuggestNameResponse> => {
+    const params = new URLSearchParams({ members: members.join(',') })
+    return fetchJSON(`${API_BASE}/entity-groups/suggest-name?${params}`)
+  },
+
+  getActiveEntityGroups: async (entityType?: EntityType): Promise<EntityGroupListResponse> => {
+    const urlParams = new URLSearchParams()
+    if (entityType) urlParams.set('entity_type', entityType)
+    const data = await fetchJSON<Record<string, unknown>>(`${API_BASE}/entity-groups/active/all?${urlParams}`)
+    return fromApiListResponse(data)
   },
 }

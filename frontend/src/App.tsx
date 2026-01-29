@@ -1,6 +1,7 @@
 import { Routes, Route, NavLink } from 'react-router-dom'
 import { Home, Search, BarChart3, Settings } from 'lucide-react'
 import { AdvancedFilterProvider } from './hooks/useAdvancedFilters'
+import { EntityGroupsProvider } from './hooks/useEntityGroups'
 import HomePage from './pages/Home'
 import ExplorePage from './pages/Explore'
 import AnalyzePage from './pages/Analyze'
@@ -9,6 +10,7 @@ import AdminPage from './pages/Admin'
 function App() {
   return (
     <AdvancedFilterProvider>
+    <EntityGroupsProvider>
       <div className="min-h-screen bg-gray-50">
         {/* Navigation */}
         <nav className="bg-white shadow-sm border-b">
@@ -87,6 +89,7 @@ function App() {
           </Routes>
         </main>
       </div>
+    </EntityGroupsProvider>
     </AdvancedFilterProvider>
   )
 }

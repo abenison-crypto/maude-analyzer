@@ -26,7 +26,10 @@ export interface TimeComparisonConfig {
   comparison_year?: number
   quarter?: 1 | 2 | 3 | 4
   rolling_window_months?: number
+  comparison_month?: string  // YYYY-MM format - specific month for z-score comparison
 }
+
+import type { ActiveEntityGroup } from './entityGroups'
 
 export interface SignalRequest {
   methods: SignalMethod[]
@@ -37,6 +40,7 @@ export interface SignalRequest {
   event_types?: string[]
   comparison_population?: ComparisonPopulation
   comparison_filters?: Record<string, unknown>
+  active_groups?: ActiveEntityGroup[]
   min_events?: number
   limit?: number
   zscore_high_threshold?: number

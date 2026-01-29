@@ -207,10 +207,58 @@ class SignalDetectionService:
         start_date = end_date - relativedelta(months=12)
         return TimeInfo(mode=TimeComparisonMode.LOOKBACK, analysis_start=start_date, analysis_end=end_date)
 
+    def _build_entity_grouping_expression(self, request: SignalRequest) -> tuple[str, str]:
+        """Build SQL expression for entity grouping.
+
+        Returns:
+            Tuple of (select_expression, group_by_expression)
+        """
+        level_col = self.LEVEL_COLUMNS[request.level]
+
+        # If no active groups, use the raw column
+        if not request.active_groups:
+            return level_col, level_col
+
+        # Filter groups relevant to this level
+        level_type_map = {
+            DrillDownLevel.MANUFACTURER: "manufacturer",
+            DrillDownLevel.BRAND: "brand",
+            DrillDownLevel.GENERIC: "generic_name",
+        }
+        current_type = level_type_map.get(request.level, "manufacturer")
+        relevant_groups = [g for g in request.active_groups if g.entity_type == current_type]
+
+        if not relevant_groups:
+            return level_col, level_col
+
+        # Build CASE WHEN expression
+        cases = []
+        for group in relevant_groups:
+            if not group.members:
+                continue
+            # Escape single quotes in member names
+            members_escaped = [m.replace("'", "''") for m in group.members]
+            placeholders = ", ".join([f"'{m}'" for m in members_escaped])
+            display = group.display_name.replace("'", "''")
+            cases.append(f"WHEN {level_col} IN ({placeholders}) THEN '{display}'")
+
+        if not cases:
+            return level_col, level_col
+
+        case_expr = f"""CASE
+            {chr(10).join('            ' + c for c in cases)}
+            ELSE {level_col}
+        END"""
+
+        return case_expr, case_expr
+
     def _get_entity_data(self, request: SignalRequest, time_info: TimeInfo) -> list[dict]:
         """Get aggregated data for entities at the specified level."""
         level_col = self.LEVEL_COLUMNS[request.level]
         needs_device_join = request.level != DrillDownLevel.MANUFACTURER
+
+        # Get grouping expression (handles entity groups if active)
+        entity_select, entity_group = self._build_entity_grouping_expression(request)
 
         # Determine which month to use for comparison (latest or specified)
         comparison_month = request.time_config.comparison_month
@@ -258,7 +306,7 @@ class SignalDetectionService:
             query = f"""
                 WITH monthly_counts AS (
                     SELECT
-                        {level_col} as entity,
+                        {entity_select} as entity,
                         DATE_TRUNC('month', m.date_received) as month,
                         COUNT(DISTINCT m.mdr_report_key) as event_count,
                         COUNT(DISTINCT CASE WHEN m.event_type = 'D' THEN m.mdr_report_key END) as death_count,
@@ -267,7 +315,7 @@ class SignalDetectionService:
                     FROM master_events m
                     JOIN devices d ON d.mdr_report_key = m.mdr_report_key
                     WHERE {where_clause}
-                    GROUP BY {level_col}, DATE_TRUNC('month', m.date_received)
+                    GROUP BY {entity_group}, DATE_TRUNC('month', m.date_received)
                 ),
                 entity_stats AS (
                     SELECT
@@ -305,7 +353,7 @@ class SignalDetectionService:
             query = f"""
                 WITH monthly_counts AS (
                     SELECT
-                        m.manufacturer_clean as entity,
+                        {entity_select} as entity,
                         DATE_TRUNC('month', m.date_received) as month,
                         COUNT(DISTINCT m.mdr_report_key) as event_count,
                         COUNT(DISTINCT CASE WHEN m.event_type = 'D' THEN m.mdr_report_key END) as death_count,
@@ -313,7 +361,7 @@ class SignalDetectionService:
                         COUNT(DISTINCT CASE WHEN m.event_type = 'M' THEN m.mdr_report_key END) as malfunction_count
                     FROM master_events m
                     WHERE {where_clause}
-                    GROUP BY m.manufacturer_clean, DATE_TRUNC('month', m.date_received)
+                    GROUP BY {entity_group}, DATE_TRUNC('month', m.date_received)
                 ),
                 entity_stats AS (
                     SELECT

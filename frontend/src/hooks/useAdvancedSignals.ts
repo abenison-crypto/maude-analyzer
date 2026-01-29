@@ -6,6 +6,7 @@ import type {
   DrillDownLevel,
   TimeComparisonConfig,
 } from '../types/signals'
+import type { ActiveEntityGroup } from '../types/entityGroups'
 
 interface UseAdvancedSignalsOptions {
   methods: SignalMethod[]
@@ -14,6 +15,7 @@ interface UseAdvancedSignalsOptions {
   parentValue?: string | null
   productCodes?: string[]
   eventTypes?: string[]
+  activeGroups?: ActiveEntityGroup[]
   minEvents?: number
   limit?: number
   enabled?: boolean
@@ -26,6 +28,7 @@ export function useAdvancedSignals({
   parentValue,
   productCodes,
   eventTypes,
+  activeGroups,
   minEvents = 10,
   limit = 20,
   enabled = true,
@@ -37,6 +40,7 @@ export function useAdvancedSignals({
     parent_value: parentValue,
     product_codes: productCodes,
     event_types: eventTypes,
+    active_groups: activeGroups,
     min_events: minEvents,
     limit,
   }
@@ -50,6 +54,7 @@ export function useAdvancedSignals({
       parentValue,
       productCodes,
       eventTypes,
+      activeGroups,
       minEvents,
       limit,
     ],
