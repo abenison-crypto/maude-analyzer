@@ -1,3 +1,5 @@
+import type { SignalRequest, SignalResponse } from '../types/signals'
+
 const API_BASE = '/api'
 
 export interface EventFilters {
@@ -361,6 +363,19 @@ export const api = {
     if (params.lookbackMonths) urlParams.set('lookback_months', String(params.lookbackMonths))
     if (params.minThreshold) urlParams.set('min_threshold', String(params.minThreshold))
     return fetchJSON(`${API_BASE}/analytics/signals?${urlParams}`)
+  },
+
+  // Advanced Safety Signals (POST)
+  postAdvancedSignals: async (request: SignalRequest): Promise<SignalResponse> => {
+    const response = await fetch(`${API_BASE}/analytics/signals/advanced`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    })
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    return response.json()
   },
 
   // Text Frequency

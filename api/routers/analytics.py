@@ -8,11 +8,13 @@ from collections import Counter
 
 from api.services.queries import QueryService
 from api.services.database import get_db
+from api.services.signals import SignalDetectionService
 from api.models.schemas import (
     TrendData,
     ManufacturerComparison,
     TextFrequencyResult,
 )
+from api.models.signal_schemas import SignalRequest, SignalResponse
 
 router = APIRouter()
 
@@ -284,6 +286,27 @@ async def detect_signals(
         "lookback_months": lookback_months,
         "signals": signals,
     }
+
+
+@router.post("/signals/advanced", response_model=SignalResponse)
+async def detect_advanced_signals(request: SignalRequest):
+    """Advanced safety signal detection with multiple methods and drill-down.
+
+    Supports multiple detection methods:
+    - Z-Score: Statistical anomaly detection vs historical baseline
+    - PRR: Proportional Reporting Ratio for disproportionality analysis
+    - ROR: Reporting Odds Ratio with confidence intervals
+    - EBGM: Empirical Bayes Geometric Mean (FDA's method)
+    - CUSUM: Cumulative sum for drift detection
+    - YoY: Year-over-year comparison
+    - POP: Period-over-period comparison
+    - Rolling: Rolling average baseline comparison
+
+    Supports hierarchical drill-down:
+    - Manufacturer -> Brand -> Generic Name -> Model Number
+    """
+    signal_service = SignalDetectionService()
+    return signal_service.detect_signals(request)
 
 
 @router.get("/text-frequency", response_model=list[TextFrequencyResult])
