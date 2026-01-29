@@ -47,6 +47,18 @@ export interface SuggestNameResponse {
   member_count: number
 }
 
+export interface AvailableEntity {
+  name: string
+  event_count: number
+  assigned_group_id: string | null
+  assigned_group_name: string | null
+}
+
+export interface AvailableEntitiesResponse {
+  entities: AvailableEntity[]
+  total: number
+}
+
 /**
  * Active group info for passing to signal queries.
  * This is sent to the backend to apply group transformations.

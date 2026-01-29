@@ -21,7 +21,10 @@ from api.models.entity_group_schemas import (
     EntityGroupListResponse,
     SuggestNameRequest,
     SuggestNameResponse,
+    AvailableEntity,
+    AvailableEntitiesResponse,
 )
+from api.services.database import get_db
 
 router = APIRouter()
 
@@ -204,6 +207,145 @@ async def suggest_group_name(
     return SuggestNameResponse(
         suggested_name=suggested,
         member_count=len(member_list),
+    )
+
+
+@router.get("/available-entities", response_model=AvailableEntitiesResponse)
+async def get_available_entities(
+    entity_type: EntityType = Query(default=EntityType.MANUFACTURER),
+    product_codes: Optional[str] = Query(None, description="Comma-separated product codes filter"),
+    event_types: Optional[str] = Query(None, description="Comma-separated event types filter"),
+    search: Optional[str] = Query(None, description="Text search filter"),
+    limit: int = Query(default=100, le=500, description="Max results"),
+):
+    """Get available entities for group selection with event counts and group assignments.
+
+    Returns manufacturers (or other entity types) with their event counts,
+    filtered by current global filters, with information about existing group assignments.
+    """
+    db = get_db()
+
+    # Build WHERE conditions
+    conditions = []
+    params = []
+
+    if entity_type == EntityType.MANUFACTURER:
+        entity_column = "manufacturer_clean"
+    elif entity_type == EntityType.BRAND:
+        entity_column = "brand_name"
+    else:  # generic_name
+        entity_column = "generic_name"
+
+    conditions.append(f"{entity_column} IS NOT NULL")
+
+    if product_codes:
+        code_list = [c.strip() for c in product_codes.split(",") if c.strip()]
+        if code_list:
+            placeholders = ", ".join(["?" for _ in code_list])
+            conditions.append(f"product_code IN ({placeholders})")
+            params.extend(code_list)
+
+    if event_types:
+        type_list = [t.strip() for t in event_types.split(",") if t.strip()]
+        if type_list:
+            placeholders = ", ".join(["?" for _ in type_list])
+            conditions.append(f"event_type IN ({placeholders})")
+            params.extend(type_list)
+
+    if search:
+        conditions.append(f"LOWER({entity_column}) LIKE ?")
+        params.append(f"%{search.lower()}%")
+
+    where_clause = " AND ".join(conditions)
+
+    # Query for entities with event counts
+    # Use different tables based on entity type
+    if entity_type == EntityType.MANUFACTURER:
+        count_query = f"""
+            SELECT {entity_column} as name, COUNT(*) as event_count
+            FROM master_events
+            WHERE {where_clause}
+            GROUP BY {entity_column}
+            ORDER BY event_count DESC
+            LIMIT ?
+        """
+    else:
+        # For brand/generic names, we need to join with devices table
+        count_query = f"""
+            SELECT d.{entity_column} as name, COUNT(DISTINCT m.mdr_report_key) as event_count
+            FROM devices d
+            JOIN master_events m ON d.mdr_report_key = m.mdr_report_key
+            WHERE d.{entity_column} IS NOT NULL
+            {"AND m.product_code IN (" + ", ".join(["?" for _ in product_codes.split(",")]) + ")" if product_codes else ""}
+            {"AND m.event_type IN (" + ", ".join(["?" for _ in event_types.split(",")]) + ")" if event_types else ""}
+            {"AND LOWER(d." + entity_column + ") LIKE ?" if search else ""}
+            GROUP BY d.{entity_column}
+            ORDER BY event_count DESC
+            LIMIT ?
+        """
+        # Rebuild params for device-based query
+        params = []
+        if product_codes:
+            params.extend([c.strip() for c in product_codes.split(",") if c.strip()])
+        if event_types:
+            params.extend([t.strip() for t in event_types.split(",") if t.strip()])
+        if search:
+            params.append(f"%{search.lower()}%")
+
+    params.append(limit)
+    results = db.fetch_all(count_query, params)
+
+    # Get group assignments for these entities
+    entity_names = [r[0] for r in results]
+    group_assignments = {}
+
+    if entity_names:
+        # Query entity_groups to find which entities are assigned
+        conn = get_entity_groups_db()
+        cursor = conn.execute(
+            "SELECT id, name, display_name, members, entity_type FROM entity_groups WHERE entity_type = ?",
+            [entity_type.value]
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        # Build assignment map
+        for row in rows:
+            members = json.loads(row[3])
+            for member in members:
+                if member in entity_names:
+                    group_assignments[member] = {
+                        "id": row[0],
+                        "name": row[1] if row[1] else row[2],  # Use name or display_name
+                    }
+
+        # Also check built-in groups
+        for builtin in BUILT_IN_GROUPS:
+            if builtin["entity_type"] == entity_type.value:
+                for member in builtin["members"]:
+                    if member in entity_names and member not in group_assignments:
+                        group_assignments[member] = {
+                            "id": builtin["id"],
+                            "name": builtin["display_name"],
+                        }
+
+    # Build response
+    entities = []
+    for row in results:
+        name = row[0]
+        event_count = row[1]
+        assignment = group_assignments.get(name)
+
+        entities.append(AvailableEntity(
+            name=name,
+            event_count=event_count,
+            assigned_group_id=assignment["id"] if assignment else None,
+            assigned_group_name=assignment["name"] if assignment else None,
+        ))
+
+    return AvailableEntitiesResponse(
+        entities=entities,
+        total=len(entities),
     )
 
 

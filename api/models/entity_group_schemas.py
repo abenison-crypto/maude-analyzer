@@ -94,3 +94,17 @@ class GroupTransformationConfig(BaseModel):
     def get_generic_name_groups(self) -> list[ActiveGroupInfo]:
         """Get only generic name groups."""
         return [g for g in self.active_groups if g.entity_type == EntityType.GENERIC_NAME]
+
+
+class AvailableEntity(BaseModel):
+    """An entity available for group selection."""
+    name: str
+    event_count: int
+    assigned_group_id: Optional[str] = None
+    assigned_group_name: Optional[str] = None
+
+
+class AvailableEntitiesResponse(BaseModel):
+    """Response for available entities endpoint."""
+    entities: list[AvailableEntity]
+    total: int

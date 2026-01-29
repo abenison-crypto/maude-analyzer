@@ -2,12 +2,12 @@
  * Create/Edit Group Dialog
  *
  * Modal dialog for creating or editing entity groups.
- * Supports member selection with autocomplete and name suggestion.
+ * Supports member selection via filterable table with event counts.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useEntityGroups } from '../../hooks/useEntityGroups'
-import { api } from '../../api/client'
+import { EntitySelectionTable } from './EntitySelectionTable'
 import type { EntityGroup, EntityType, CreateEntityGroupRequest } from '../../types/entityGroups'
 
 interface CreateGroupDialogProps {
@@ -31,49 +31,8 @@ export function CreateGroupDialog({
   const [displayName, setDisplayName] = useState(group?.displayName || '')
   const [useAutoName, setUseAutoName] = useState(!group?.displayName)
   const [members, setMembers] = useState<string[]>(group?.members || [])
-  const [memberSearch, setMemberSearch] = useState('')
-  const [suggestions, setSuggestions] = useState<Array<{ value: string; label: string; count?: number }>>([])
-  const [showSuggestions, setShowSuggestions] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const searchInputRef = useRef<HTMLInputElement>(null)
-  const suggestionsRef = useRef<HTMLDivElement>(null)
-
-  // Fetch manufacturer/entity suggestions
-  useEffect(() => {
-    if (!memberSearch.trim()) {
-      setSuggestions([])
-      return
-    }
-
-    const fetchSuggestions = async () => {
-      try {
-        let items: Array<{ value: string; label: string; count?: number }> = []
-
-        if (entityType === 'manufacturer') {
-          const mfrs = await api.getManufacturers(memberSearch, 10)
-          items = mfrs.map(m => ({ value: m.name, label: m.name, count: m.count }))
-        } else if (entityType === 'brand') {
-          const brands = await api.getBrandNames(memberSearch, 10)
-          items = brands
-        } else if (entityType === 'generic_name') {
-          const generics = await api.getGenericNames(memberSearch, 10)
-          items = generics
-        }
-
-        // Filter out already selected members
-        items = items.filter(item => !members.includes(item.value))
-        setSuggestions(items)
-        setShowSuggestions(items.length > 0)
-      } catch (err) {
-        console.error('Failed to fetch suggestions:', err)
-      }
-    }
-
-    const debounce = setTimeout(fetchSuggestions, 200)
-    return () => clearTimeout(debounce)
-  }, [memberSearch, entityType, members])
 
   // Auto-generate display name when members change
   useEffect(() => {
@@ -84,48 +43,9 @@ export function CreateGroupDialog({
     }
   }, [members, useAutoName, suggestName])
 
-  // Close suggestions on click outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        suggestionsRef.current &&
-        !suggestionsRef.current.contains(event.target as Node) &&
-        searchInputRef.current &&
-        !searchInputRef.current.contains(event.target as Node)
-      ) {
-        setShowSuggestions(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+  const handleMembersChange = useCallback((newMembers: string[]) => {
+    setMembers(newMembers)
   }, [])
-
-  const handleAddMember = useCallback((value: string) => {
-    if (value && !members.includes(value)) {
-      setMembers(prev => [...prev, value])
-    }
-    setMemberSearch('')
-    setShowSuggestions(false)
-    searchInputRef.current?.focus()
-  }, [members])
-
-  const handleRemoveMember = useCallback((value: string) => {
-    setMembers(prev => prev.filter(m => m !== value))
-  }, [])
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && memberSearch.trim()) {
-      e.preventDefault()
-      // Add first suggestion or raw text
-      if (suggestions.length > 0) {
-        handleAddMember(suggestions[0].value)
-      } else {
-        handleAddMember(memberSearch.trim())
-      }
-    } else if (e.key === 'Escape') {
-      setShowSuggestions(false)
-    }
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -228,72 +148,14 @@ export function CreateGroupDialog({
               {/* Members */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Members <span className="text-red-500">*</span>
+                  Select Members <span className="text-red-500">*</span>
                 </label>
-
-                {/* Member chips */}
-                {members.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {members.map(member => (
-                      <span
-                        key={member}
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded"
-                      >
-                        <span className="truncate max-w-[200px]">{member}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveMember(member)}
-                          className="hover:text-blue-600"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Search input */}
-                <div className="relative">
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    value={memberSearch}
-                    onChange={(e) => setMemberSearch(e.target.value)}
-                    onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-                    onKeyDown={handleKeyDown}
-                    className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    placeholder={`Search ${entityType === 'manufacturer' ? 'manufacturers' : entityType === 'brand' ? 'brands' : 'generic names'}...`}
-                  />
-
-                  {/* Suggestions dropdown */}
-                  {showSuggestions && suggestions.length > 0 && (
-                    <div
-                      ref={suggestionsRef}
-                      className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-auto"
-                    >
-                      {suggestions.map(item => (
-                        <button
-                          key={item.value}
-                          type="button"
-                          onClick={() => handleAddMember(item.value)}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm flex items-center justify-between"
-                        >
-                          <span className="truncate">{item.label}</span>
-                          {item.count !== undefined && (
-                            <span className="text-gray-400 text-xs ml-2">
-                              {item.count.toLocaleString()}
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Type to search and select members. Press Enter to add.
-                </p>
+                <EntitySelectionTable
+                  entityType={entityType}
+                  selectedMembers={members}
+                  onSelectionChange={handleMembersChange}
+                  excludeGroupId={isEdit ? group?.id : undefined}
+                />
               </div>
 
               {/* Display Name */}

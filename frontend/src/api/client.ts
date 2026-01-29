@@ -6,6 +6,7 @@ import type {
   UpdateEntityGroupRequest,
   SuggestNameResponse,
   EntityType,
+  AvailableEntitiesResponse,
 } from '../types/entityGroups'
 import { fromApiResponse, fromApiListResponse } from '../types/entityGroups'
 
@@ -474,6 +475,22 @@ export const api = {
   suggestGroupName: async (members: string[]): Promise<SuggestNameResponse> => {
     const params = new URLSearchParams({ members: members.join(',') })
     return fetchJSON(`${API_BASE}/entity-groups/suggest-name?${params}`)
+  },
+
+  getAvailableEntities: async (params: {
+    entityType?: EntityType
+    productCodes?: string[]
+    eventTypes?: string[]
+    search?: string
+    limit?: number
+  } = {}): Promise<AvailableEntitiesResponse> => {
+    const urlParams = new URLSearchParams()
+    if (params.entityType) urlParams.set('entity_type', params.entityType)
+    if (params.productCodes?.length) urlParams.set('product_codes', params.productCodes.join(','))
+    if (params.eventTypes?.length) urlParams.set('event_types', params.eventTypes.join(','))
+    if (params.search) urlParams.set('search', params.search)
+    if (params.limit) urlParams.set('limit', String(params.limit))
+    return fetchJSON(`${API_BASE}/entity-groups/available-entities?${urlParams}`)
   },
 
   getActiveEntityGroups: async (entityType?: EntityType): Promise<EntityGroupListResponse> => {
