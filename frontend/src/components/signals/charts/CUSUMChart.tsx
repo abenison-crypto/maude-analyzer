@@ -14,9 +14,10 @@ interface CUSUMChartProps {
   details: CUSUMDetails
   value: number
   isSignal: boolean
+  lookbackMonths?: number
 }
 
-export default function CUSUMChart({ details, value, isSignal }: CUSUMChartProps) {
+export default function CUSUMChart({ details, value, isSignal, lookbackMonths }: CUSUMChartProps) {
   const { mean, std, control_limit, cusum_series } = details
 
   // Use real series if available, otherwise generate placeholder
@@ -26,7 +27,7 @@ export default function CUSUMChart({ details, value, isSignal }: CUSUMChartProps
         cusum: point.cusum,
         aboveLimit: point.cusum > control_limit,
       }))
-    : generatePlaceholderCusum(value, control_limit)
+    : generatePlaceholderCusum(value, control_limit, lookbackMonths || 12)
 
   // Find the point where limit was first exceeded (if any)
   const exceedIndex = data.findIndex((d) => d.cusum > control_limit)
@@ -135,19 +136,18 @@ function formatMonth(dateStr: string): string {
   }
 }
 
-function generatePlaceholderCusum(finalValue: number, controlLimit: number) {
+function generatePlaceholderCusum(finalValue: number, controlLimit: number, numMonths: number = 12) {
   // Generate a plausible CUSUM path ending at finalValue
   const months = []
   const now = new Date()
-  const numPoints = 12
 
-  for (let i = numPoints - 1; i >= 0; i--) {
+  for (let i = numMonths - 1; i >= 0; i--) {
     const d = new Date(now)
     d.setMonth(d.getMonth() - i)
     const month = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
 
     // Interpolate CUSUM value with some noise
-    const progress = (numPoints - i) / numPoints
+    const progress = (numMonths - i) / numMonths
     const baseValue = finalValue * progress
     const noise = (Math.random() - 0.3) * 0.5 // Slight upward bias
     const cusum = Math.max(0, baseValue + noise)

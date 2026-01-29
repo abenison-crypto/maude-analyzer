@@ -22,6 +22,7 @@ import ThresholdIndicator from './ThresholdIndicator'
 interface SignalRowDetailProps {
   signal: SignalResult
   methods: SignalMethod[]
+  lookbackMonths?: number
 }
 
 const METHOD_LABELS: Record<SignalMethod, string> = {
@@ -35,7 +36,7 @@ const METHOD_LABELS: Record<SignalMethod, string> = {
   rolling: 'Rolling Average',
 }
 
-export default function SignalRowDetail({ signal, methods }: SignalRowDetailProps) {
+export default function SignalRowDetail({ signal, methods, lookbackMonths }: SignalRowDetailProps) {
   // Filter to methods that have results with values
   const availableMethods = methods.filter((method) => {
     const result = signal.method_results.find((r) => r.method === method)
@@ -92,7 +93,7 @@ export default function SignalRowDetail({ signal, methods }: SignalRowDetailProp
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Chart visualization */}
           <div className="lg:col-span-2 bg-white rounded-lg border border-gray-200 p-4">
-            {renderChart(activeMethod, activeResult)}
+            {renderChart(activeMethod, activeResult, lookbackMonths)}
           </div>
 
           {/* Method explanation & threshold */}
@@ -141,7 +142,7 @@ export default function SignalRowDetail({ signal, methods }: SignalRowDetailProp
   )
 }
 
-function renderChart(method: SignalMethod, result: MethodResult) {
+function renderChart(method: SignalMethod, result: MethodResult, lookbackMonths?: number) {
   if (result.value === null || !result.details) {
     return (
       <div className="text-sm text-gray-500 py-8 text-center">
@@ -157,6 +158,7 @@ function renderChart(method: SignalMethod, result: MethodResult) {
           details={result.details as ZScoreDetails}
           value={result.value}
           isSignal={result.is_signal}
+          lookbackMonths={lookbackMonths}
         />
       )
 
@@ -196,6 +198,7 @@ function renderChart(method: SignalMethod, result: MethodResult) {
           details={result.details as CUSUMDetails}
           value={result.value}
           isSignal={result.is_signal}
+          lookbackMonths={lookbackMonths}
         />
       )
 
@@ -225,6 +228,7 @@ function renderChart(method: SignalMethod, result: MethodResult) {
           details={result.details as RollingDetails}
           value={result.value}
           isSignal={result.is_signal}
+          lookbackMonths={lookbackMonths}
         />
       )
 

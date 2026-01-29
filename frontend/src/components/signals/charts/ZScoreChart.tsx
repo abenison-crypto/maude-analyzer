@@ -15,9 +15,10 @@ interface ZScoreChartProps {
   details: ZScoreDetails
   value: number
   isSignal: boolean
+  lookbackMonths?: number
 }
 
-export default function ZScoreChart({ details, value, isSignal }: ZScoreChartProps) {
+export default function ZScoreChart({ details, value, isSignal, lookbackMonths }: ZScoreChartProps) {
   const { avg_monthly, std_monthly, latest_month, monthly_series } = details
 
   // If we have monthly series data, use it; otherwise generate placeholder
@@ -29,7 +30,7 @@ export default function ZScoreChart({ details, value, isSignal }: ZScoreChartPro
         lowerBand: Math.max(0, avg_monthly - std_monthly),
         isLatest: index === monthly_series.length - 1,
       }))
-    : generatePlaceholderData(avg_monthly, std_monthly, latest_month)
+    : generatePlaceholderData(avg_monthly, std_monthly, latest_month, lookbackMonths || 12)
 
   return (
     <div className="w-full">
@@ -133,12 +134,12 @@ function formatMonth(dateStr: string): string {
   }
 }
 
-function generatePlaceholderData(avg: number, std: number, latest: number) {
-  // Generate 12 months of synthetic data for visualization
+function generatePlaceholderData(avg: number, std: number, latest: number, numMonths: number = 12) {
+  // Generate synthetic data for visualization based on lookback period
   const months = []
   const now = new Date()
 
-  for (let i = 11; i >= 0; i--) {
+  for (let i = numMonths - 1; i >= 0; i--) {
     const d = new Date(now)
     d.setMonth(d.getMonth() - i)
     const month = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })

@@ -14,9 +14,10 @@ interface RollingChartProps {
   details: RollingDetails
   value: number
   isSignal: boolean
+  lookbackMonths?: number
 }
 
-export default function RollingChart({ details, value, isSignal }: RollingChartProps) {
+export default function RollingChart({ details, value, isSignal, lookbackMonths }: RollingChartProps) {
   const { rolling_avg, rolling_std, latest, window_months, monthly_series } = details
 
   // Use real series if available, otherwise generate placeholder
@@ -29,7 +30,7 @@ export default function RollingChart({ details, value, isSignal }: RollingChartP
         rollingAvg: rolling_avg,
         isLatest: index === monthly_series.length - 1,
       }))
-    : generatePlaceholderData(rolling_avg, rolling_std, latest, window_months)
+    : generatePlaceholderData(rolling_avg, rolling_std, latest, window_months, lookbackMonths)
 
   return (
     <div className="w-full">
@@ -152,11 +153,13 @@ function generatePlaceholderData(
   avg: number,
   std: number,
   latest: number,
-  windowMonths: number
+  windowMonths: number,
+  lookbackMonths?: number
 ) {
   const months = []
   const now = new Date()
-  const numPoints = Math.max(12, windowMonths + 3)
+  // Use lookbackMonths if provided, otherwise use default logic
+  const numPoints = lookbackMonths || Math.max(12, windowMonths + 3)
 
   for (let i = numPoints - 1; i >= 0; i--) {
     const d = new Date(now)

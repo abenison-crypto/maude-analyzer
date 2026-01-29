@@ -212,6 +212,9 @@ class SignalDetectionService:
         level_col = self.LEVEL_COLUMNS[request.level]
         needs_device_join = request.level != DrillDownLevel.MANUFACTURER
 
+        # Determine which month to use for comparison (latest or specified)
+        comparison_month = request.time_config.comparison_month
+
         # Build conditions
         conditions = [
             f"m.date_received >= ?",
@@ -244,16 +247,23 @@ class SignalDetectionService:
         where_clause = " AND ".join(conditions)
 
         # Build query with monthly breakdown for z-score calculation
+        # If comparison_month is specified, use it; otherwise use max_month
+        comparison_month_condition = (
+            f"mc.month = DATE_TRUNC('month', DATE '{comparison_month.isoformat()}')"
+            if comparison_month
+            else "mc.month = es.max_month"
+        )
+
         if needs_device_join:
             query = f"""
                 WITH monthly_counts AS (
                     SELECT
                         {level_col} as entity,
                         DATE_TRUNC('month', m.date_received) as month,
-                        COUNT(*) as event_count,
-                        COUNT(CASE WHEN m.event_type = 'D' THEN 1 END) as death_count,
-                        COUNT(CASE WHEN m.event_type = 'IN' THEN 1 END) as injury_count,
-                        COUNT(CASE WHEN m.event_type = 'M' THEN 1 END) as malfunction_count
+                        COUNT(DISTINCT m.mdr_report_key) as event_count,
+                        COUNT(DISTINCT CASE WHEN m.event_type = 'D' THEN m.mdr_report_key END) as death_count,
+                        COUNT(DISTINCT CASE WHEN m.event_type = 'IN' THEN m.mdr_report_key END) as injury_count,
+                        COUNT(DISTINCT CASE WHEN m.event_type = 'M' THEN m.mdr_report_key END) as malfunction_count
                     FROM master_events m
                     JOIN devices d ON d.mdr_report_key = m.mdr_report_key
                     WHERE {where_clause}
@@ -276,7 +286,7 @@ class SignalDetectionService:
                 latest_counts AS (
                     SELECT mc.entity, mc.event_count as latest_month_events
                     FROM monthly_counts mc
-                    JOIN entity_stats es ON mc.entity = es.entity AND mc.month = es.max_month
+                    JOIN entity_stats es ON mc.entity = es.entity AND {comparison_month_condition}
                 )
                 SELECT
                     es.entity,
@@ -286,9 +296,9 @@ class SignalDetectionService:
                     es.malfunctions,
                     ROUND(es.avg_monthly, 2) as avg_monthly,
                     ROUND(COALESCE(es.std_monthly, 0), 2) as std_monthly,
-                    lc.latest_month_events
+                    COALESCE(lc.latest_month_events, 0) as latest_month_events
                 FROM entity_stats es
-                JOIN latest_counts lc ON es.entity = lc.entity
+                LEFT JOIN latest_counts lc ON es.entity = lc.entity
                 ORDER BY es.total_events DESC
             """
         else:
@@ -297,10 +307,10 @@ class SignalDetectionService:
                     SELECT
                         m.manufacturer_clean as entity,
                         DATE_TRUNC('month', m.date_received) as month,
-                        COUNT(*) as event_count,
-                        COUNT(CASE WHEN m.event_type = 'D' THEN 1 END) as death_count,
-                        COUNT(CASE WHEN m.event_type = 'IN' THEN 1 END) as injury_count,
-                        COUNT(CASE WHEN m.event_type = 'M' THEN 1 END) as malfunction_count
+                        COUNT(DISTINCT m.mdr_report_key) as event_count,
+                        COUNT(DISTINCT CASE WHEN m.event_type = 'D' THEN m.mdr_report_key END) as death_count,
+                        COUNT(DISTINCT CASE WHEN m.event_type = 'IN' THEN m.mdr_report_key END) as injury_count,
+                        COUNT(DISTINCT CASE WHEN m.event_type = 'M' THEN m.mdr_report_key END) as malfunction_count
                     FROM master_events m
                     WHERE {where_clause}
                     GROUP BY m.manufacturer_clean, DATE_TRUNC('month', m.date_received)
@@ -322,7 +332,7 @@ class SignalDetectionService:
                 latest_counts AS (
                     SELECT mc.entity, mc.event_count as latest_month_events
                     FROM monthly_counts mc
-                    JOIN entity_stats es ON mc.entity = es.entity AND mc.month = es.max_month
+                    JOIN entity_stats es ON mc.entity = es.entity AND {comparison_month_condition}
                 )
                 SELECT
                     es.entity,
@@ -332,9 +342,9 @@ class SignalDetectionService:
                     es.malfunctions,
                     ROUND(es.avg_monthly, 2) as avg_monthly,
                     ROUND(COALESCE(es.std_monthly, 0), 2) as std_monthly,
-                    lc.latest_month_events
+                    COALESCE(lc.latest_month_events, 0) as latest_month_events
                 FROM entity_stats es
-                JOIN latest_counts lc ON es.entity = lc.entity
+                LEFT JOIN latest_counts lc ON es.entity = lc.entity
                 ORDER BY es.total_events DESC
             """
 
@@ -376,7 +386,7 @@ class SignalDetectionService:
 
         if needs_device_join:
             query = f"""
-                SELECT {level_col} as entity, COUNT(*) as events
+                SELECT {level_col} as entity, COUNT(DISTINCT m.mdr_report_key) as events
                 FROM master_events m
                 JOIN devices d ON d.mdr_report_key = m.mdr_report_key
                 WHERE m.date_received >= ? AND m.date_received <= ?
@@ -385,7 +395,7 @@ class SignalDetectionService:
             """
         else:
             query = f"""
-                SELECT m.manufacturer_clean as entity, COUNT(*) as events
+                SELECT m.manufacturer_clean as entity, COUNT(DISTINCT m.mdr_report_key) as events
                 FROM master_events m
                 WHERE m.date_received >= ? AND m.date_received <= ?
                 AND m.manufacturer_clean IN ({placeholders})
@@ -451,14 +461,14 @@ class SignalDetectionService:
             strength = "normal"
             is_signal = False
 
-        # Get monthly series for visualization
+        # Get monthly series for visualization (full lookback period)
         monthly_series = None
         if time_info:
             monthly_data = self._get_monthly_series(entity_data["entity"], request, time_info)
             if monthly_data:
                 monthly_series = [
                     {"month": m["month"].isoformat() if hasattr(m["month"], 'isoformat') else str(m["month"]), "count": m["count"]}
-                    for m in monthly_data[-12:]  # Last 12 months
+                    for m in monthly_data  # Return full lookback period
                 ]
 
         return MethodResult(
@@ -642,7 +652,7 @@ class SignalDetectionService:
                 "mean": round(mean, 1),
                 "std": round(std, 1),
                 "control_limit": control_limit,
-                "cusum_series": cusum_series[-12:],  # Last 12 months
+                "cusum_series": cusum_series,  # Return full lookback period
             },
         )
 
@@ -709,10 +719,10 @@ class SignalDetectionService:
             strength = "normal"
             is_signal = False
 
-        # Build monthly series for visualization
+        # Build monthly series for visualization (full lookback period)
         monthly_series = [
             {"month": m["month"].isoformat() if hasattr(m["month"], 'isoformat') else str(m["month"]), "count": m["count"]}
-            for m in monthly_data[-12:]  # Last 12 months
+            for m in monthly_data  # Return full lookback period
         ]
 
         return MethodResult(
@@ -754,7 +764,7 @@ class SignalDetectionService:
                 SELECT
                     CASE WHEN {level_col} = ? THEN 'entity' ELSE 'other' END as group_type,
                     CASE WHEN m.event_type = ? THEN 'target' ELSE 'other' END as event_type,
-                    COUNT(*) as count
+                    COUNT(DISTINCT m.mdr_report_key) as count
                 FROM master_events m
                 JOIN devices d ON d.mdr_report_key = m.mdr_report_key
                 WHERE {where_clause}
@@ -766,7 +776,7 @@ class SignalDetectionService:
                 SELECT
                     CASE WHEN m.manufacturer_clean = ? THEN 'entity' ELSE 'other' END as group_type,
                     CASE WHEN m.event_type = ? THEN 'target' ELSE 'other' END as event_type,
-                    COUNT(*) as count
+                    COUNT(DISTINCT m.mdr_report_key) as count
                 FROM master_events m
                 WHERE {where_clause}
                 AND m.manufacturer_clean IS NOT NULL
@@ -799,7 +809,7 @@ class SignalDetectionService:
 
         if needs_device_join:
             query = f"""
-                SELECT DATE_TRUNC('month', m.date_received) as month, COUNT(*) as count
+                SELECT DATE_TRUNC('month', m.date_received) as month, COUNT(DISTINCT m.mdr_report_key) as count
                 FROM master_events m
                 JOIN devices d ON d.mdr_report_key = m.mdr_report_key
                 WHERE m.date_received >= ? AND m.date_received <= ?
@@ -809,7 +819,7 @@ class SignalDetectionService:
             """
         else:
             query = f"""
-                SELECT DATE_TRUNC('month', m.date_received) as month, COUNT(*) as count
+                SELECT DATE_TRUNC('month', m.date_received) as month, COUNT(DISTINCT m.mdr_report_key) as count
                 FROM master_events m
                 WHERE m.date_received >= ? AND m.date_received <= ?
                 AND m.manufacturer_clean = ?

@@ -22,6 +22,7 @@ interface SignalTreeTableProps {
   methods: SignalMethod[]
   isLoading: boolean
   onDrillDown: (entity: string, childLevel: DrillDownLevel) => void
+  lookbackMonths?: number
 }
 
 const SIGNAL_STYLES = {
@@ -135,6 +136,7 @@ export default function SignalTreeTable({
   methods,
   isLoading,
   onDrillDown,
+  lookbackMonths,
 }: SignalTreeTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
 
@@ -364,7 +366,7 @@ export default function SignalTreeTable({
                   {isExpanded && (
                     <tr key={`${signal.entity}-detail`}>
                       <td colSpan={6 + methods.length} className="px-4 py-4 bg-gray-50">
-                        <SignalRowDetail signal={signal} methods={methods} />
+                        <SignalRowDetail signal={signal} methods={methods} lookbackMonths={lookbackMonths} />
                       </td>
                     </tr>
                   )}

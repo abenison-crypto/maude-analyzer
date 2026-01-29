@@ -260,6 +260,7 @@ export default function AdvancedSignalsPanel() {
         methods={methods}
         isLoading={isLoading}
         onDrillDown={handleDrillDown}
+        lookbackMonths={timeConfig.lookback_months}
       />
 
     </div>
