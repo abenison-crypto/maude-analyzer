@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
-import { AlertTriangle, TrendingUp, Calendar, Settings } from 'lucide-react'
+import { AlertTriangle, TrendingUp, Calendar, Settings, Filter } from 'lucide-react'
 import { useAdvancedSignals } from '../../hooks/useAdvancedSignals'
+import { useAdvancedFilters } from '../../hooks/useAdvancedFilters'
 import SignalMethodSelector from './SignalMethodSelector'
 import TimePeriodConfigurator from './TimePeriodConfigurator'
 import SignalBreadcrumb from './SignalBreadcrumb'
@@ -28,6 +29,9 @@ const getNextLevel = (level: DrillDownLevel): DrillDownLevel => {
 }
 
 export default function AdvancedSignalsPanel() {
+  // Global filters
+  const { filters, hasActiveFilters, activeFilterCount } = useAdvancedFilters()
+
   // State
   const [methods, setMethods] = useState<SignalMethod[]>(['zscore'])
   const [timeConfig, setTimeConfig] = useState<TimeComparisonConfig>({
@@ -40,12 +44,28 @@ export default function AdvancedSignalsPanel() {
   const [minEvents, setMinEvents] = useState(10)
   const [showSettings, setShowSettings] = useState(false)
 
+  // Combine product codes from both filter fields
+  const productCodes = useMemo(() => {
+    const codes = [
+      ...filters.productCodes,
+      ...filters.deviceProductCodes,
+    ]
+    return codes.length > 0 ? codes : undefined
+  }, [filters.productCodes, filters.deviceProductCodes])
+
+  // Event types from filters
+  const eventTypes = useMemo(() => {
+    return filters.eventTypes.length > 0 ? filters.eventTypes : undefined
+  }, [filters.eventTypes])
+
   // Query
   const { data, isLoading, error } = useAdvancedSignals({
     methods,
     timeConfig,
     level,
     parentValue,
+    productCodes,
+    eventTypes,
     minEvents,
     limit: 20,
     enabled: true,
@@ -128,13 +148,20 @@ export default function AdvancedSignalsPanel() {
             {data?.time_info?.mode || 'Lookback'}
           </p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+        <div className={`rounded-lg p-4 border ${hasActiveFilters ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
           <div className="flex items-center gap-2">
-            <span className="font-medium text-gray-800">Entities Analyzed</span>
+            {hasActiveFilters && <Filter className="w-4 h-4 text-purple-600" />}
+            <span className={`font-medium ${hasActiveFilters ? 'text-purple-800' : 'text-gray-800'}`}>
+              {hasActiveFilters ? 'Filtered Analysis' : 'Entities Analyzed'}
+            </span>
           </div>
-          <p className="text-2xl font-bold text-gray-900 mt-2">{summary.total}</p>
-          <p className="text-sm text-gray-600">
-            {methods.length} method{methods.length !== 1 ? 's' : ''}
+          <p className={`text-2xl font-bold mt-2 ${hasActiveFilters ? 'text-purple-900' : 'text-gray-900'}`}>
+            {summary.total}
+          </p>
+          <p className={`text-sm ${hasActiveFilters ? 'text-purple-600' : 'text-gray-600'}`}>
+            {hasActiveFilters
+              ? `${activeFilterCount} filter${activeFilterCount !== 1 ? 's' : ''} applied`
+              : `${methods.length} method${methods.length !== 1 ? 's' : ''}`}
           </p>
         </div>
       </div>
