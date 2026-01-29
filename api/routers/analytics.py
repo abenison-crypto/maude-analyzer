@@ -70,8 +70,18 @@ async def compare_manufacturers(
 
 @router.get("/signals")
 async def detect_signals(
+    # Core filters
     manufacturers: Optional[str] = Query(None, description="Comma-separated manufacturer names"),
     product_codes: Optional[str] = Query(None, description="Comma-separated product codes"),
+    event_types: Optional[str] = Query(None, description="Comma-separated event types (D,I,M,O)"),
+    # Device filters
+    brand_names: Optional[str] = Query(None, description="Comma-separated device brand names"),
+    generic_names: Optional[str] = Query(None, description="Comma-separated device generic names"),
+    device_manufacturers: Optional[str] = Query(None, description="Comma-separated device manufacturer names"),
+    model_numbers: Optional[str] = Query(None, description="Comma-separated device model numbers"),
+    implant_flag: Optional[str] = Query(None, description="Implant flag (Y/N)"),
+    device_product_codes: Optional[str] = Query(None, description="Comma-separated device product codes"),
+    # Signal params
     lookback_months: int = Query(12, ge=1, le=60, description="Months to analyze"),
     min_threshold: int = Query(10, ge=1, description="Minimum events to consider"),
 ):
@@ -125,6 +135,65 @@ async def detect_signals(
         placeholders = ", ".join(["?" for _ in code_list])
         conditions.append(f"product_code IN ({placeholders})")
         params.extend(code_list)
+
+    if event_types:
+        from api.constants.columns import EVENT_TYPE_FILTER_MAPPING
+        type_list = event_types.split(",")
+        db_types = [EVENT_TYPE_FILTER_MAPPING.get(t, t) for t in type_list]
+        placeholders = ", ".join(["?" for _ in db_types])
+        conditions.append(f"event_type IN ({placeholders})")
+        params.extend(db_types)
+
+    # Device filters using EXISTS subquery
+    device_conditions = []
+    device_params = []
+
+    if brand_names:
+        brand_list = brand_names.split(",")
+        placeholders = ", ".join(["?" for _ in brand_list])
+        device_conditions.append(f"d.brand_name IN ({placeholders})")
+        device_params.extend(brand_list)
+
+    if generic_names:
+        generic_list = generic_names.split(",")
+        generic_conds = []
+        for name in generic_list:
+            generic_conds.append("d.generic_name ILIKE ?")
+            device_params.append(f"%{name}%")
+        device_conditions.append(f"({' OR '.join(generic_conds)})")
+
+    if device_manufacturers:
+        dm_list = device_manufacturers.split(",")
+        placeholders = ", ".join(["?" for _ in dm_list])
+        device_conditions.append(f"d.manufacturer_d_name IN ({placeholders})")
+        device_params.extend(dm_list)
+
+    if model_numbers:
+        model_list = model_numbers.split(",")
+        placeholders = ", ".join(["?" for _ in model_list])
+        device_conditions.append(f"d.model_number IN ({placeholders})")
+        device_params.extend(model_list)
+
+    if implant_flag in ('Y', 'N'):
+        device_conditions.append("d.implant_flag = ?")
+        device_params.append(implant_flag)
+
+    if device_product_codes:
+        dpc_list = device_product_codes.split(",")
+        placeholders = ", ".join(["?" for _ in dpc_list])
+        device_conditions.append(f"d.device_report_product_code IN ({placeholders})")
+        device_params.extend(dpc_list)
+
+    if device_conditions:
+        device_where = " AND ".join(device_conditions)
+        conditions.append(f"""
+            EXISTS (
+                SELECT 1 FROM devices d
+                WHERE d.mdr_report_key = master_events.mdr_report_key
+                AND {device_where}
+            )
+        """)
+        params.extend(device_params)
 
     where_clause = " AND ".join(conditions)
 

@@ -314,8 +314,20 @@ export const api = {
 
   // Safety Signals
   getSafetySignals: (params: {
+    // Core filters
     manufacturers?: string[]
     productCodes?: string[]
+    eventTypes?: string[]
+    dateFrom?: string
+    dateTo?: string
+    // Device filters
+    brandNames?: string[]
+    genericNames?: string[]
+    deviceManufacturers?: string[]
+    modelNumbers?: string[]
+    implantFlag?: string
+    deviceProductCodes?: string[]
+    // Signal params
     lookbackMonths?: number
     minThreshold?: number
   } = {}): Promise<{
@@ -332,8 +344,20 @@ export const api = {
     }>
   }> => {
     const urlParams = new URLSearchParams()
+    // Core filters
     if (params.manufacturers?.length) urlParams.set('manufacturers', params.manufacturers.join(','))
     if (params.productCodes?.length) urlParams.set('product_codes', params.productCodes.join(','))
+    if (params.eventTypes?.length) urlParams.set('event_types', params.eventTypes.join(','))
+    if (params.dateFrom) urlParams.set('date_from', params.dateFrom)
+    if (params.dateTo) urlParams.set('date_to', params.dateTo)
+    // Device filters
+    if (params.brandNames?.length) urlParams.set('brand_names', params.brandNames.join(','))
+    if (params.genericNames?.length) urlParams.set('generic_names', params.genericNames.join(','))
+    if (params.deviceManufacturers?.length) urlParams.set('device_manufacturers', params.deviceManufacturers.join(','))
+    if (params.modelNumbers?.length) urlParams.set('model_numbers', params.modelNumbers.join(','))
+    if (params.implantFlag) urlParams.set('implant_flag', params.implantFlag)
+    if (params.deviceProductCodes?.length) urlParams.set('device_product_codes', params.deviceProductCodes.join(','))
+    // Signal params
     if (params.lookbackMonths) urlParams.set('lookback_months', String(params.lookbackMonths))
     if (params.minThreshold) urlParams.set('min_threshold', String(params.minThreshold))
     return fetchJSON(`${API_BASE}/analytics/signals?${urlParams}`)

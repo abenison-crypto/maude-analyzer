@@ -77,11 +77,38 @@ export function useSafetySignals(lookbackMonths = 12, minThreshold = 10) {
   const { filters } = useAdvancedFilters()
 
   return useQuery({
-    queryKey: ['safetySignals', filters.manufacturers, filters.productCodes, lookbackMonths, minThreshold],
+    queryKey: [
+      'safetySignals',
+      filters.manufacturers,
+      filters.productCodes,
+      filters.eventTypes,
+      filters.dateFrom,
+      filters.dateTo,
+      filters.brandNames,
+      filters.genericNames,
+      filters.deviceManufacturers,
+      filters.modelNumbers,
+      filters.implantFlag,
+      filters.deviceProductCodes,
+      lookbackMonths,
+      minThreshold,
+    ],
     queryFn: () =>
       api.getSafetySignals({
+        // Core filters
         manufacturers: filters.manufacturers.length ? filters.manufacturers : undefined,
         productCodes: filters.productCodes.length ? filters.productCodes : undefined,
+        eventTypes: filters.eventTypes.length ? filters.eventTypes : undefined,
+        dateFrom: filters.dateFrom || undefined,
+        dateTo: filters.dateTo || undefined,
+        // Device filters
+        brandNames: filters.brandNames.length ? filters.brandNames : undefined,
+        genericNames: filters.genericNames.length ? filters.genericNames : undefined,
+        deviceManufacturers: filters.deviceManufacturers.length ? filters.deviceManufacturers : undefined,
+        modelNumbers: filters.modelNumbers.length ? filters.modelNumbers : undefined,
+        implantFlag: filters.implantFlag || undefined,
+        deviceProductCodes: filters.deviceProductCodes.length ? filters.deviceProductCodes : undefined,
+        // Signal params
         lookbackMonths,
         minThreshold,
       }),
