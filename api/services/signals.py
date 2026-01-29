@@ -275,8 +275,15 @@ class SignalDetectionService:
         if request.parent_value and request.level != DrillDownLevel.MANUFACTURER:
             parent_col = self.PARENT_COLUMNS.get(request.level)
             if parent_col:
-                conditions.append(f"{parent_col} = ?")
-                params.append(request.parent_value)
+                # Check if parent_value is a group display name - if so, expand to members
+                parent_values = self._expand_group_to_members(request.parent_value, request.active_groups)
+                if len(parent_values) == 1:
+                    conditions.append(f"{parent_col} = ?")
+                    params.append(parent_values[0])
+                else:
+                    placeholders = ", ".join(["?" for _ in parent_values])
+                    conditions.append(f"{parent_col} IN ({placeholders})")
+                    params.extend(parent_values)
 
         # Product code filter
         if request.product_codes:
@@ -893,6 +900,22 @@ class SignalDetectionService:
         # For other levels, assume children exist to avoid expensive per-entity queries
         # The drill-down will show empty results if there are no children
         return True
+
+    def _expand_group_to_members(self, parent_value: str, active_groups: list) -> list[str]:
+        """Expand a group display name to its member entities.
+
+        If parent_value matches a group's display_name, return the group's members.
+        Otherwise, return the parent_value as a single-item list.
+        """
+        if not active_groups:
+            return [parent_value]
+
+        for group in active_groups:
+            if group.display_name == parent_value and group.members:
+                return group.members
+
+        # Not a group - return as-is
+        return [parent_value]
 
     def _determine_overall_signal(self, method_results: list[MethodResult]) -> str:
         """Determine overall signal type from multiple method results."""
