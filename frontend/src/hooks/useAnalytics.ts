@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
-import { useFilters } from './useFilters'
+import { useAdvancedFilters } from './useAdvancedFilters'
 
 export function useTrends(groupBy: 'day' | 'month' | 'year' = 'month') {
-  const { filters } = useFilters()
+  const { filters } = useAdvancedFilters()
 
   return useQuery({
     queryKey: ['trends', filters.manufacturers, filters.productCodes, filters.eventTypes, filters.dateFrom, filters.dateTo, groupBy],
@@ -20,7 +20,7 @@ export function useTrends(groupBy: 'day' | 'month' | 'year' = 'month') {
 }
 
 export function useManufacturerComparison(manufacturers: string[]) {
-  const { filters } = useFilters()
+  const { filters } = useAdvancedFilters()
 
   return useQuery({
     queryKey: ['manufacturerComparison', manufacturers, filters.dateFrom, filters.dateTo],
@@ -35,7 +35,7 @@ export function useManufacturerComparison(manufacturers: string[]) {
 }
 
 export function useEventTypeDistribution() {
-  const { filters } = useFilters()
+  const { filters } = useAdvancedFilters()
 
   return useQuery({
     queryKey: ['eventTypeDistribution', filters.manufacturers, filters.productCodes, filters.dateFrom, filters.dateTo],
@@ -74,7 +74,7 @@ export function useIngestionHistory() {
 }
 
 export function useSafetySignals(lookbackMonths = 12, minThreshold = 10) {
-  const { filters } = useFilters()
+  const { filters } = useAdvancedFilters()
 
   return useQuery({
     queryKey: ['safetySignals', filters.manufacturers, filters.productCodes, lookbackMonths, minThreshold],
@@ -90,7 +90,7 @@ export function useSafetySignals(lookbackMonths = 12, minThreshold = 10) {
 }
 
 export function useTextFrequency(sampleSize = 1000) {
-  const { filters } = useFilters()
+  const { filters } = useAdvancedFilters()
 
   return useQuery({
     queryKey: ['textFrequency', filters.manufacturers, filters.productCodes, filters.eventTypes, filters.dateFrom, filters.dateTo, sampleSize],

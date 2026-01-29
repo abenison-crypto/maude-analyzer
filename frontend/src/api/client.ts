@@ -1,14 +1,39 @@
 const API_BASE = '/api'
 
 export interface EventFilters {
+  // Core filters
   manufacturers?: string[]
   productCodes?: string[]
   eventTypes?: string[]
   dateFrom?: string
   dateTo?: string
   searchText?: string
+  // Device filters
+  brandNames?: string[]
+  genericNames?: string[]
+  deviceManufacturers?: string[]
+  modelNumbers?: string[]
+  implantFlag?: 'Y' | 'N' | ''
+  deviceProductCodes?: string[]
+  // Pagination
   page?: number
   pageSize?: number
+}
+
+export interface AutocompleteItem {
+  value: string
+  label: string
+  count?: number
+}
+
+export interface FilterPreset {
+  id: string
+  name: string
+  description?: string
+  filters: Partial<EventFilters>
+  isBuiltIn: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export interface EventSummary {
@@ -105,6 +130,7 @@ export interface DatabaseStatus {
 function buildQueryString(filters: EventFilters): string {
   const params = new URLSearchParams()
 
+  // Core filters
   if (filters.manufacturers?.length) {
     params.set('manufacturers', filters.manufacturers.join(','))
   }
@@ -123,6 +149,28 @@ function buildQueryString(filters: EventFilters): string {
   if (filters.searchText) {
     params.set('search_text', filters.searchText)
   }
+
+  // Device filters
+  if (filters.brandNames?.length) {
+    params.set('brand_names', filters.brandNames.join(','))
+  }
+  if (filters.genericNames?.length) {
+    params.set('generic_names', filters.genericNames.join(','))
+  }
+  if (filters.deviceManufacturers?.length) {
+    params.set('device_manufacturers', filters.deviceManufacturers.join(','))
+  }
+  if (filters.modelNumbers?.length) {
+    params.set('model_numbers', filters.modelNumbers.join(','))
+  }
+  if (filters.implantFlag) {
+    params.set('implant_flag', filters.implantFlag)
+  }
+  if (filters.deviceProductCodes?.length) {
+    params.set('device_product_codes', filters.deviceProductCodes.join(','))
+  }
+
+  // Pagination
   if (filters.page) {
     params.set('page', String(filters.page))
   }
@@ -158,6 +206,56 @@ export const api = {
 
   getProductCodes: (search?: string, limit = 100): Promise<ProductCodeItem[]> =>
     fetchJSON(`${API_BASE}/events/product-codes?${new URLSearchParams({ ...(search && { search }), limit: String(limit) })}`),
+
+  // Device filter autocomplete
+  getBrandNames: (search?: string, limit = 50): Promise<AutocompleteItem[]> =>
+    fetchJSON(`${API_BASE}/filters/brand-names?${new URLSearchParams({ ...(search && { search }), limit: String(limit) })}`),
+
+  getGenericNames: (search?: string, limit = 50): Promise<AutocompleteItem[]> =>
+    fetchJSON(`${API_BASE}/filters/generic-names?${new URLSearchParams({ ...(search && { search }), limit: String(limit) })}`),
+
+  getDeviceManufacturers: (search?: string, limit = 50): Promise<AutocompleteItem[]> =>
+    fetchJSON(`${API_BASE}/filters/device-manufacturers?${new URLSearchParams({ ...(search && { search }), limit: String(limit) })}`),
+
+  getModelNumbers: (search?: string, limit = 50): Promise<AutocompleteItem[]> =>
+    fetchJSON(`${API_BASE}/filters/model-numbers?${new URLSearchParams({ ...(search && { search }), limit: String(limit) })}`),
+
+  getDeviceProductCodes: (search?: string, limit = 50): Promise<AutocompleteItem[]> =>
+    fetchJSON(`${API_BASE}/filters/device-product-codes?${new URLSearchParams({ ...(search && { search }), limit: String(limit) })}`),
+
+  // Presets
+  getPresets: (includeBuiltIn = true): Promise<FilterPreset[]> =>
+    fetchJSON(`${API_BASE}/presets?include_built_in=${includeBuiltIn}`),
+
+  getPreset: (presetId: string): Promise<FilterPreset> =>
+    fetchJSON(`${API_BASE}/presets/${presetId}`),
+
+  createPreset: async (name: string, description: string | undefined, filters: Partial<EventFilters>): Promise<FilterPreset> => {
+    const response = await fetch(`${API_BASE}/presets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, filters }),
+    })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    return response.json()
+  },
+
+  updatePreset: async (presetId: string, updates: { name?: string; description?: string; filters?: Partial<EventFilters> }): Promise<FilterPreset> => {
+    const response = await fetch(`${API_BASE}/presets/${presetId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    return response.json()
+  },
+
+  deletePreset: async (presetId: string): Promise<void> => {
+    const response = await fetch(`${API_BASE}/presets/${presetId}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+  },
 
   // Analytics
   getTrends: (

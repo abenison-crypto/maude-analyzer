@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from api.config import get_settings
-from api.routers import events, analytics, admin, data_quality
+from api.routers import events, analytics, admin, data_quality, filters, presets
 
 settings = get_settings()
 
@@ -28,6 +28,12 @@ class CacheHeaderMiddleware(BaseHTTPMiddleware):
         "/api/analytics/trends": 600,  # 10 minutes
         "/api/analytics/event-type-distribution": 600,  # 10 minutes
         "/api/admin/status": 60,  # 1 minute
+        "/api/filters/brand-names": 1800,  # 30 minutes
+        "/api/filters/generic-names": 1800,  # 30 minutes
+        "/api/filters/device-manufacturers": 1800,  # 30 minutes
+        "/api/filters/model-numbers": 1800,  # 30 minutes
+        "/api/filters/device-product-codes": 1800,  # 30 minutes
+        "/api/presets": 60,  # 1 minute
     }
 
     async def dispatch(self, request: Request, call_next):
@@ -67,6 +73,8 @@ app.include_router(events.router, prefix="/api/events", tags=["Events"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(data_quality.router, prefix="/api", tags=["Data Quality"])
+app.include_router(filters.router, prefix="/api/filters", tags=["Filters"])
+app.include_router(presets.router, prefix="/api/presets", tags=["Presets"])
 
 
 @app.get("/api")

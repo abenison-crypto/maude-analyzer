@@ -1,12 +1,25 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
-import { useFilters } from './useFilters'
+import { useAdvancedFilters } from './useAdvancedFilters'
 
 export function useEventStats() {
-  const { filters } = useFilters()
+  const { filters } = useAdvancedFilters()
 
   return useQuery({
-    queryKey: ['eventStats', filters.manufacturers, filters.productCodes, filters.eventTypes, filters.dateFrom, filters.dateTo],
+    queryKey: [
+      'eventStats',
+      filters.manufacturers,
+      filters.productCodes,
+      filters.eventTypes,
+      filters.dateFrom,
+      filters.dateTo,
+      filters.brandNames,
+      filters.genericNames,
+      filters.deviceManufacturers,
+      filters.modelNumbers,
+      filters.implantFlag,
+      filters.deviceProductCodes,
+    ],
     queryFn: () =>
       api.getEventStats({
         manufacturers: filters.manufacturers.length ? filters.manufacturers : undefined,
@@ -14,12 +27,18 @@ export function useEventStats() {
         eventTypes: filters.eventTypes.length ? filters.eventTypes : undefined,
         dateFrom: filters.dateFrom || undefined,
         dateTo: filters.dateTo || undefined,
+        brandNames: filters.brandNames.length ? filters.brandNames : undefined,
+        genericNames: filters.genericNames.length ? filters.genericNames : undefined,
+        deviceManufacturers: filters.deviceManufacturers.length ? filters.deviceManufacturers : undefined,
+        modelNumbers: filters.modelNumbers.length ? filters.modelNumbers : undefined,
+        implantFlag: filters.implantFlag || undefined,
+        deviceProductCodes: filters.deviceProductCodes.length ? filters.deviceProductCodes : undefined,
       }),
   })
 }
 
 export function useEvents(page = 1, pageSize = 50) {
-  const { filters } = useFilters()
+  const { filters } = useAdvancedFilters()
 
   return useQuery({
     queryKey: ['events', filters, page, pageSize],
@@ -31,6 +50,12 @@ export function useEvents(page = 1, pageSize = 50) {
         dateFrom: filters.dateFrom || undefined,
         dateTo: filters.dateTo || undefined,
         searchText: filters.searchText || undefined,
+        brandNames: filters.brandNames.length ? filters.brandNames : undefined,
+        genericNames: filters.genericNames.length ? filters.genericNames : undefined,
+        deviceManufacturers: filters.deviceManufacturers.length ? filters.deviceManufacturers : undefined,
+        modelNumbers: filters.modelNumbers.length ? filters.modelNumbers : undefined,
+        implantFlag: filters.implantFlag || undefined,
+        deviceProductCodes: filters.deviceProductCodes.length ? filters.deviceProductCodes : undefined,
         page,
         pageSize,
       }),

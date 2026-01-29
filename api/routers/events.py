@@ -15,6 +15,7 @@ except ImportError:
     EXCEL_AVAILABLE = False
 
 from api.services.queries import QueryService
+from api.services.filters import DeviceFilters
 from api.models.schemas import (
     EventListResponse,
     EventDetail,
@@ -26,14 +27,50 @@ from api.models.schemas import (
 router = APIRouter()
 
 
+def parse_device_filters(
+    brand_names: Optional[str] = None,
+    generic_names: Optional[str] = None,
+    device_manufacturers: Optional[str] = None,
+    model_numbers: Optional[str] = None,
+    implant_flag: Optional[str] = None,
+    device_product_codes: Optional[str] = None,
+) -> Optional[DeviceFilters]:
+    """Parse device filter query parameters into DeviceFilters object."""
+    has_filters = any([
+        brand_names, generic_names, device_manufacturers,
+        model_numbers, implant_flag, device_product_codes
+    ])
+
+    if not has_filters:
+        return None
+
+    return DeviceFilters(
+        brand_names=brand_names.split(",") if brand_names else None,
+        generic_names=generic_names.split(",") if generic_names else None,
+        device_manufacturers=device_manufacturers.split(",") if device_manufacturers else None,
+        model_numbers=model_numbers.split(",") if model_numbers else None,
+        implant_flag=implant_flag if implant_flag in ('Y', 'N') else None,
+        device_product_codes=device_product_codes.split(",") if device_product_codes else None,
+    )
+
+
 @router.get("", response_model=EventListResponse)
 async def list_events(
+    # Core filters
     manufacturers: Optional[str] = Query(None, description="Comma-separated manufacturer names"),
     product_codes: Optional[str] = Query(None, description="Comma-separated product codes"),
     event_types: Optional[str] = Query(None, description="Comma-separated event types (D,I,M,O)"),
     date_from: Optional[date] = Query(None, description="Start date"),
     date_to: Optional[date] = Query(None, description="End date"),
     search_text: Optional[str] = Query(None, description="Search text"),
+    # Device filters
+    brand_names: Optional[str] = Query(None, description="Comma-separated device brand names"),
+    generic_names: Optional[str] = Query(None, description="Comma-separated device generic names"),
+    device_manufacturers: Optional[str] = Query(None, description="Comma-separated device manufacturer names"),
+    model_numbers: Optional[str] = Query(None, description="Comma-separated device model numbers"),
+    implant_flag: Optional[str] = Query(None, description="Implant flag (Y/N)"),
+    device_product_codes: Optional[str] = Query(None, description="Comma-separated device product codes"),
+    # Pagination
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=1000, description="Results per page"),
 ):
@@ -45,6 +82,16 @@ async def list_events(
     code_list = product_codes.split(",") if product_codes else None
     type_list = event_types.split(",") if event_types else None
 
+    # Parse device filters
+    device_filters = parse_device_filters(
+        brand_names=brand_names,
+        generic_names=generic_names,
+        device_manufacturers=device_manufacturers,
+        model_numbers=model_numbers,
+        implant_flag=implant_flag,
+        device_product_codes=device_product_codes,
+    )
+
     result = query_service.get_events(
         manufacturers=mfr_list,
         product_codes=code_list,
@@ -52,6 +99,7 @@ async def list_events(
         date_from=date_from,
         date_to=date_to,
         search_text=search_text,
+        device_filters=device_filters,
         page=page,
         page_size=page_size,
     )
@@ -61,11 +109,19 @@ async def list_events(
 
 @router.get("/stats", response_model=StatsResponse)
 async def get_stats(
+    # Core filters
     manufacturers: Optional[str] = Query(None, description="Comma-separated manufacturer names"),
     product_codes: Optional[str] = Query(None, description="Comma-separated product codes"),
     event_types: Optional[str] = Query(None, description="Comma-separated event types (D,I,M,O)"),
     date_from: Optional[date] = Query(None, description="Start date"),
     date_to: Optional[date] = Query(None, description="End date"),
+    # Device filters
+    brand_names: Optional[str] = Query(None, description="Comma-separated device brand names"),
+    generic_names: Optional[str] = Query(None, description="Comma-separated device generic names"),
+    device_manufacturers: Optional[str] = Query(None, description="Comma-separated device manufacturer names"),
+    model_numbers: Optional[str] = Query(None, description="Comma-separated device model numbers"),
+    implant_flag: Optional[str] = Query(None, description="Implant flag (Y/N)"),
+    device_product_codes: Optional[str] = Query(None, description="Comma-separated device product codes"),
 ):
     """Get summary statistics for events matching filters."""
     query_service = QueryService()
@@ -74,12 +130,23 @@ async def get_stats(
     code_list = product_codes.split(",") if product_codes else None
     type_list = event_types.split(",") if event_types else None
 
+    # Parse device filters
+    device_filters = parse_device_filters(
+        brand_names=brand_names,
+        generic_names=generic_names,
+        device_manufacturers=device_manufacturers,
+        model_numbers=model_numbers,
+        implant_flag=implant_flag,
+        device_product_codes=device_product_codes,
+    )
+
     return query_service.get_event_stats(
         manufacturers=mfr_list,
         product_codes=code_list,
         event_types=type_list,
         date_from=date_from,
         date_to=date_to,
+        device_filters=device_filters,
     )
 
 
@@ -105,12 +172,21 @@ async def list_product_codes(
 
 @router.get("/export")
 async def export_events(
+    # Core filters
     manufacturers: Optional[str] = Query(None, description="Comma-separated manufacturer names"),
     product_codes: Optional[str] = Query(None, description="Comma-separated product codes"),
     event_types: Optional[str] = Query(None, description="Comma-separated event types (D,I,M,O)"),
     date_from: Optional[date] = Query(None, description="Start date"),
     date_to: Optional[date] = Query(None, description="End date"),
     search_text: Optional[str] = Query(None, description="Search text"),
+    # Device filters
+    brand_names: Optional[str] = Query(None, description="Comma-separated device brand names"),
+    generic_names: Optional[str] = Query(None, description="Comma-separated device generic names"),
+    device_manufacturers: Optional[str] = Query(None, description="Comma-separated device manufacturer names"),
+    model_numbers: Optional[str] = Query(None, description="Comma-separated device model numbers"),
+    implant_flag: Optional[str] = Query(None, description="Implant flag (Y/N)"),
+    device_product_codes: Optional[str] = Query(None, description="Comma-separated device product codes"),
+    # Export options
     format: str = Query("csv", description="Export format (csv or xlsx)"),
     max_records: int = Query(10000, ge=1, le=100000, description="Maximum records to export"),
 ):
@@ -121,6 +197,16 @@ async def export_events(
     code_list = product_codes.split(",") if product_codes else None
     type_list = event_types.split(",") if event_types else None
 
+    # Parse device filters
+    device_filters = parse_device_filters(
+        brand_names=brand_names,
+        generic_names=generic_names,
+        device_manufacturers=device_manufacturers,
+        model_numbers=model_numbers,
+        implant_flag=implant_flag,
+        device_product_codes=device_product_codes,
+    )
+
     # Get events (limited to max_records)
     result = query_service.get_events(
         manufacturers=mfr_list,
@@ -129,6 +215,7 @@ async def export_events(
         date_from=date_from,
         date_to=date_to,
         search_text=search_text,
+        device_filters=device_filters,
         page=1,
         page_size=max_records,
     )

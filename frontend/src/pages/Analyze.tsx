@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
-import FilterBar from '../components/FilterBar'
+import { AdvancedFilterBar } from '../components/filters'
 import TrendChart from '../components/TrendChart'
 import SignalsTable from '../components/SignalsTable'
 import TextFrequency from '../components/TextFrequency'
@@ -52,7 +52,7 @@ export default function AnalyzePage() {
       </div>
 
       {/* Filters */}
-      <FilterBar />
+      <AdvancedFilterBar />
 
       {/* Tabs */}
       <div className="border-b border-gray-200">

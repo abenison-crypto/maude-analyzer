@@ -4,7 +4,13 @@ from typing import Optional
 from datetime import date
 
 from api.services.database import get_db
-from api.services.filters import build_filter_clause, build_count_query, build_paginated_query
+from api.services.filters import (
+    build_filter_clause,
+    build_extended_filter_clause,
+    build_count_query,
+    build_paginated_query,
+    DeviceFilters,
+)
 from api.constants.columns import (
     COLUMN_EVENT_TYPE,
     COLUMN_MANUFACTURER_CLEAN,
@@ -32,18 +38,20 @@ class QueryService:
         event_types: Optional[list[str]] = None,
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
+        device_filters: Optional[DeviceFilters] = None,
     ) -> dict:
         """Get summary statistics for events.
 
         Returns:
             Dictionary with total, deaths, injuries, malfunctions counts.
         """
-        where_clause, params = build_filter_clause(
+        where_clause, params = build_extended_filter_clause(
             manufacturers=manufacturers,
             product_codes=product_codes,
             event_types=event_types,
             date_from=date_from,
             date_to=date_to,
+            device_filters=device_filters,
         )
 
         query = f"""
@@ -74,6 +82,7 @@ class QueryService:
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
         search_text: Optional[str] = None,
+        device_filters: Optional[DeviceFilters] = None,
         page: int = 1,
         page_size: int = 50,
     ) -> dict:
@@ -82,13 +91,14 @@ class QueryService:
         Returns:
             Dictionary with events list and pagination info.
         """
-        where_clause, params = build_filter_clause(
+        where_clause, params = build_extended_filter_clause(
             manufacturers=manufacturers,
             product_codes=product_codes,
             event_types=event_types,
             date_from=date_from,
             date_to=date_to,
             search_text=search_text,
+            device_filters=device_filters,
         )
 
         # Get total count
