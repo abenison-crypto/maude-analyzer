@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react'
 import { useEvents, useEventDetail } from '../hooks/useEvents'
-import { EVENT_TYPE_LABELS, OUTCOME_BADGES, getEventTypeDisplay } from '../constants/schema'
+import { OUTCOME_BADGES, getEventTypeDisplay } from '../constants/schema'
 
 interface EventDetailModalProps {
   mdrReportKey: string

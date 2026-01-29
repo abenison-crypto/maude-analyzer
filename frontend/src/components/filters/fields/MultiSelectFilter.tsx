@@ -34,7 +34,7 @@ export default function MultiSelectFilter({
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const debounceRef = useRef<NodeJS.Timeout>()
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
 
   // Close dropdown when clicking outside
   useEffect(() => {

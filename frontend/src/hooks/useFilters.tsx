@@ -11,7 +11,6 @@
 import { ReactNode } from 'react'
 import {
   AdvancedFilterProvider,
-  useAdvancedFilters,
   useFiltersCompat,
 } from './useAdvancedFilters'
 

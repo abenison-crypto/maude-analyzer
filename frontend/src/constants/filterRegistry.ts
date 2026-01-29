@@ -12,7 +12,6 @@
 import type {
   FilterFieldDefinition,
   FilterCategory,
-  FilterFieldType,
   FilterValues,
   SelectOption,
 } from '../types/filters'
