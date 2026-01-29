@@ -47,6 +47,74 @@ export interface SignalRequest {
   change_pct_elevated?: number
 }
 
+// Typed detail interfaces for each method
+export interface ZScoreDetails {
+  avg_monthly: number
+  std_monthly: number
+  latest_month: number
+  monthly_series?: MonthlyDataPoint[]
+}
+
+export interface PRRDetails {
+  a: number  // Entity target events (deaths)
+  b: number  // Entity other events
+  c: number  // Other entities target events
+  d: number  // Other entities other events
+}
+
+export interface RORDetails {
+  a: number
+  b: number
+  c: number
+  d: number
+}
+
+export interface EBGMDetails {
+  observed: number
+  expected: number
+  rr: number
+}
+
+export interface CUSUMDetails {
+  mean: number
+  std: number
+  control_limit: number
+  cusum_series?: CUSUMDataPoint[]
+}
+
+export interface YoYDetails {
+  current_period: number
+  comparison_period: number
+}
+
+export interface RollingDetails {
+  rolling_avg: number
+  rolling_std: number
+  latest: number
+  window_months: number
+  monthly_series?: MonthlyDataPoint[]
+}
+
+export interface MonthlyDataPoint {
+  month: string
+  count: number
+}
+
+export interface CUSUMDataPoint {
+  month: string
+  cusum: number
+  count: number
+}
+
+export type MethodDetails =
+  | ZScoreDetails
+  | PRRDetails
+  | RORDetails
+  | EBGMDetails
+  | CUSUMDetails
+  | YoYDetails
+  | RollingDetails
+
 export interface MethodResult {
   method: SignalMethod
   value: number | null
@@ -54,7 +122,7 @@ export interface MethodResult {
   upper_ci?: number | null
   is_signal: boolean
   signal_strength: SignalStrength
-  details?: Record<string, unknown>
+  details?: MethodDetails
 }
 
 export interface SignalResult {
@@ -82,6 +150,12 @@ export interface TimeInfo {
   rolling_window?: number | null
 }
 
+export interface DataCompleteness {
+  last_complete_month: string
+  incomplete_months: string[]
+  estimated_lag_months: number
+}
+
 export interface SignalResponse {
   level: DrillDownLevel
   parent_value?: string | null
@@ -93,6 +167,7 @@ export interface SignalResponse {
   elevated_signal_count: number
   normal_count: number
   data_note?: string | null
+  data_completeness?: DataCompleteness
 }
 
 // UI State types

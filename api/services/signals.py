@@ -418,7 +418,7 @@ class SignalDetectionService:
     ) -> MethodResult:
         """Calculate signal for a specific method."""
         if method == SignalMethod.ZSCORE:
-            return self._calculate_zscore(entity_data, request)
+            return self._calculate_zscore(entity_data, request, time_info)
         elif method == SignalMethod.PRR:
             return self._calculate_prr(entity_data, request, time_info)
         elif method == SignalMethod.ROR:
@@ -436,7 +436,7 @@ class SignalDetectionService:
         else:
             return MethodResult(method=method, value=None, is_signal=False)
 
-    def _calculate_zscore(self, entity_data: dict, request: SignalRequest) -> MethodResult:
+    def _calculate_zscore(self, entity_data: dict, request: SignalRequest, time_info: TimeInfo = None) -> MethodResult:
         """Calculate Z-score: (latest - avg) / stddev."""
         avg = entity_data.get("avg_monthly", 0)
         std = entity_data.get("std_monthly", 0)
@@ -457,12 +457,27 @@ class SignalDetectionService:
             strength = "normal"
             is_signal = False
 
+        # Get monthly series for visualization
+        monthly_series = None
+        if time_info:
+            monthly_data = self._get_monthly_series(entity_data["entity"], request, time_info)
+            if monthly_data:
+                monthly_series = [
+                    {"month": m["month"].isoformat() if hasattr(m["month"], 'isoformat') else str(m["month"]), "count": m["count"]}
+                    for m in monthly_data[-12:]  # Last 12 months
+                ]
+
         return MethodResult(
             method=SignalMethod.ZSCORE,
             value=z_score,
             is_signal=is_signal,
             signal_strength=strength,
-            details={"avg_monthly": avg, "std_monthly": std, "latest_month": latest},
+            details={
+                "avg_monthly": avg,
+                "std_monthly": std,
+                "latest_month": latest,
+                "monthly_series": monthly_series,
+            },
         )
 
     def _calculate_prr(self, entity_data: dict, request: SignalRequest, time_info: TimeInfo) -> MethodResult:
@@ -608,9 +623,16 @@ class SignalDetectionService:
         # Calculate CUSUM: cumulative sum of (x - mean) / std
         cusum = 0
         max_cusum = 0
-        for count in counts:
+        cusum_series = []
+        for i, count in enumerate(counts):
             cusum = max(0, cusum + (count - mean) / std - 0.5)  # One-sided CUSUM with slack
             max_cusum = max(max_cusum, cusum)
+            month_str = monthly_data[i]["month"].isoformat() if hasattr(monthly_data[i]["month"], 'isoformat') else str(monthly_data[i]["month"])
+            cusum_series.append({
+                "month": month_str,
+                "cusum": round(cusum, 2),
+                "count": count,
+            })
 
         # Control limit: typically 3-5 sigma
         control_limit = 3.0
@@ -622,7 +644,12 @@ class SignalDetectionService:
             value=round(max_cusum, 2),
             is_signal=is_signal,
             signal_strength=strength,
-            details={"mean": round(mean, 1), "std": round(std, 1), "control_limit": control_limit},
+            details={
+                "mean": round(mean, 1),
+                "std": round(std, 1),
+                "control_limit": control_limit,
+                "cusum_series": cusum_series[-12:],  # Last 12 months
+            },
         )
 
     def _calculate_yoy(self, entity_data: dict, request: SignalRequest) -> MethodResult:
@@ -688,6 +715,12 @@ class SignalDetectionService:
             strength = "normal"
             is_signal = False
 
+        # Build monthly series for visualization
+        monthly_series = [
+            {"month": m["month"].isoformat() if hasattr(m["month"], 'isoformat') else str(m["month"]), "count": m["count"]}
+            for m in monthly_data[-12:]  # Last 12 months
+        ]
+
         return MethodResult(
             method=SignalMethod.ROLLING,
             value=round(deviation, 2),
@@ -698,6 +731,7 @@ class SignalDetectionService:
                 "rolling_std": round(rolling_std, 1),
                 "latest": latest,
                 "window_months": window,
+                "monthly_series": monthly_series,
             },
         )
 

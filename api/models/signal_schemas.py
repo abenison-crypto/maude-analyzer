@@ -160,6 +160,26 @@ class TimeInfo(BaseModel):
     rolling_window: Optional[int] = None
 
 
+class DataCompleteness(BaseModel):
+    """Information about data completeness and reporting lag."""
+    last_complete_month: str
+    incomplete_months: list[str] = []
+    estimated_lag_months: int = 2
+
+
+class MonthlyDataPoint(BaseModel):
+    """Single point in a monthly time series."""
+    month: str
+    count: int
+
+
+class CUSUMDataPoint(BaseModel):
+    """Single point in a CUSUM series."""
+    month: str
+    cusum: float
+    count: int
+
+
 class SignalResponse(BaseModel):
     """Response schema for advanced signal detection."""
     # Request info
@@ -181,6 +201,7 @@ class SignalResponse(BaseModel):
 
     # Metadata
     data_note: Optional[str] = None
+    data_completeness: Optional[DataCompleteness] = None
 
 
 class DisproportionalityInput(BaseModel):

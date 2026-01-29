@@ -6,6 +6,8 @@ import SignalMethodSelector from './SignalMethodSelector'
 import TimePeriodConfigurator from './TimePeriodConfigurator'
 import SignalBreadcrumb from './SignalBreadcrumb'
 import SignalTreeTable from './SignalTreeTable'
+import SignalHelpPanel from './SignalHelpPanel'
+import DataLagWarning from './DataLagWarning'
 import type {
   SignalMethod,
   DrillDownLevel,
@@ -43,6 +45,7 @@ export default function AdvancedSignalsPanel() {
   const [path, setPath] = useState<BreadcrumbItem[]>([])
   const [minEvents, setMinEvents] = useState(10)
   const [showSettings, setShowSettings] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   // Combine product codes from both filter fields
   const productCodes = useMemo(() => {
@@ -166,6 +169,15 @@ export default function AdvancedSignalsPanel() {
         </div>
       </div>
 
+      {/* Help Panel */}
+      <SignalHelpPanel isOpen={showHelp} onToggle={() => setShowHelp(!showHelp)} />
+
+      {/* Data Lag Warning */}
+      <DataLagWarning
+        dataCompleteness={data?.data_completeness}
+        analysisEndDate={data?.time_info?.analysis_end?.toString()}
+      />
+
       {/* Settings Panel */}
       <div className="bg-white rounded-lg shadow">
         <button
@@ -192,7 +204,11 @@ export default function AdvancedSignalsPanel() {
             {/* Time Configuration */}
             <div>
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Time Period</h3>
-              <TimePeriodConfigurator config={timeConfig} onChange={setTimeConfig} />
+              <TimePeriodConfigurator
+                config={timeConfig}
+                onChange={setTimeConfig}
+                selectedMethods={methods}
+              />
             </div>
 
             {/* Advanced Options */}
@@ -246,33 +262,6 @@ export default function AdvancedSignalsPanel() {
         onDrillDown={handleDrillDown}
       />
 
-      {/* Legend */}
-      <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
-        <h4 className="font-medium text-gray-700 mb-2">Signal Detection Methods</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-          <div>
-            <strong>Z-Score:</strong> Deviation from historical average
-          </div>
-          <div>
-            <strong>PRR:</strong> Proportional Reporting Ratio (vs all events)
-          </div>
-          <div>
-            <strong>ROR:</strong> Reporting Odds Ratio with confidence interval
-          </div>
-          <div>
-            <strong>EBGM:</strong> Empirical Bayes shrinkage estimate (FDA method)
-          </div>
-          <div>
-            <strong>CUSUM:</strong> Cumulative sum for drift detection
-          </div>
-          <div>
-            <strong>YoY:</strong> Year-over-year percentage change
-          </div>
-          <div>
-            <strong>Rolling:</strong> Comparison to rolling baseline average
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

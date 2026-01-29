@@ -1,8 +1,10 @@
-import { type TimeComparisonConfig, type TimeComparisonMode, TIME_MODE_LABELS } from '../../types/signals'
+import { Info } from 'lucide-react'
+import { type TimeComparisonConfig, type TimeComparisonMode, type SignalMethod, TIME_MODE_LABELS } from '../../types/signals'
 
 interface TimePeriodConfiguratorProps {
   config: TimeComparisonConfig
   onChange: (config: TimeComparisonConfig) => void
+  selectedMethods?: SignalMethod[]
 }
 
 const LOOKBACK_OPTIONS = [6, 12, 24, 36, 48, 60]
@@ -10,28 +12,87 @@ const ROLLING_WINDOW_OPTIONS = [3, 6, 12]
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = Array.from({ length: 10 }, (_, i) => CURRENT_YEAR - i)
 
-export default function TimePeriodConfigurator({ config, onChange }: TimePeriodConfiguratorProps) {
+// Smart defaults based on signal detection method
+const METHOD_DEFAULTS: Record<SignalMethod, { lookback: number; rollingWindow?: number; recommendation: string }> = {
+  zscore: { lookback: 24, recommendation: 'Z-Score works best with 24+ months for a stable baseline' },
+  prr: { lookback: 12, recommendation: 'PRR needs sufficient events; 12 months is usually adequate' },
+  ror: { lookback: 12, recommendation: 'ROR needs sufficient events; 12 months is usually adequate' },
+  ebgm: { lookback: 12, recommendation: 'EBGM can work with smaller datasets due to Bayesian shrinkage' },
+  cusum: { lookback: 24, recommendation: 'CUSUM detects drift; longer periods (24+ months) improve sensitivity' },
+  yoy: { lookback: 12, recommendation: 'YoY compares full years; ensure both periods are complete' },
+  pop: { lookback: 12, recommendation: 'Period comparisons work best with equal-length periods' },
+  rolling: { lookback: 12, rollingWindow: 3, recommendation: 'Rolling uses a 3-month window by default; 12 months provides context' },
+}
+
+export default function TimePeriodConfigurator({ config, onChange, selectedMethods = [] }: TimePeriodConfiguratorProps) {
   const modes: TimeComparisonMode[] = ['lookback', 'custom', 'yoy', 'rolling']
+
+  // Get the recommended lookback based on selected methods
+  const getRecommendedLookback = (): number => {
+    if (selectedMethods.length === 0) return 12
+    const lookbacks = selectedMethods.map((m) => METHOD_DEFAULTS[m]?.lookback || 12)
+    return Math.max(...lookbacks)
+  }
+
+  // Get recommendation text for display
+  const getRecommendation = (): string | null => {
+    if (selectedMethods.length === 0) return null
+    // Show recommendation for the method requiring the longest lookback
+    const maxMethod = selectedMethods.reduce((max, m) =>
+      (METHOD_DEFAULTS[m]?.lookback || 12) > (METHOD_DEFAULTS[max]?.lookback || 12) ? m : max
+    )
+    return METHOD_DEFAULTS[maxMethod]?.recommendation || null
+  }
 
   const handleModeChange = (mode: TimeComparisonMode) => {
     const newConfig: TimeComparisonConfig = { ...config, mode }
+    const recommended = getRecommendedLookback()
 
-    // Set default values for the mode
+    // Set default values for the mode using smart defaults
     if (mode === 'lookback') {
-      newConfig.lookback_months = config.lookback_months || 12
+      newConfig.lookback_months = config.lookback_months || recommended
     } else if (mode === 'yoy') {
       newConfig.current_year = config.current_year || CURRENT_YEAR - 1
       newConfig.comparison_year = config.comparison_year || CURRENT_YEAR - 2
     } else if (mode === 'rolling') {
       newConfig.rolling_window_months = config.rolling_window_months || 3
-      newConfig.lookback_months = config.lookback_months || 12
+      newConfig.lookback_months = config.lookback_months || recommended
     }
 
     onChange(newConfig)
   }
 
+  // Apply smart defaults when methods change
+  const applySmartDefaults = () => {
+    const recommended = getRecommendedLookback()
+    onChange({
+      ...config,
+      lookback_months: recommended,
+    })
+  }
+
+  const recommendation = getRecommendation()
+  const recommendedLookback = getRecommendedLookback()
+  const isUsingRecommended = config.lookback_months === recommendedLookback
+
   return (
     <div className="space-y-4">
+      {/* Smart defaults recommendation */}
+      {recommendation && !isUsingRecommended && (
+        <div className="flex items-start gap-2 p-2 bg-blue-50 border border-blue-100 rounded text-xs">
+          <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-blue-800">{recommendation}</p>
+            <button
+              onClick={applySmartDefaults}
+              className="mt-1 text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Apply recommended ({recommendedLookback} months)
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Mode Tabs */}
       <div className="flex border-b border-gray-200">
         {modes.map((mode) => (

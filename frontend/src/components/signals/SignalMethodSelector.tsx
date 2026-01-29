@@ -1,4 +1,5 @@
 import { SIGNAL_METHODS, type SignalMethod } from '../../types/signals'
+import MethodInfoTooltip from './MethodInfoTooltip'
 
 interface SignalMethodSelectorProps {
   selectedMethods: SignalMethod[]
@@ -60,18 +61,20 @@ export default function SignalMethodSelector({ selectedMethods, onChange }: Sign
         </div>
         <div className="flex flex-wrap gap-2">
           {timeMethods.map((method) => (
-            <button
-              key={method.id}
-              onClick={() => toggleMethod(method.id)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                selectedMethods.includes(method.id)
-                  ? 'bg-blue-100 text-blue-800 border-2 border-blue-300'
-                  : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
-              }`}
-              title={method.description}
-            >
-              {method.label}
-            </button>
+            <div key={method.id} className="flex items-center gap-1">
+              <button
+                onClick={() => toggleMethod(method.id)}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  selectedMethods.includes(method.id)
+                    ? 'bg-blue-100 text-blue-800 border-2 border-blue-300'
+                    : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
+                }`}
+                title={method.description}
+              >
+                {method.label}
+              </button>
+              <MethodInfoTooltip method={method.id} compact />
+            </div>
           ))}
         </div>
       </div>
@@ -97,18 +100,20 @@ export default function SignalMethodSelector({ selectedMethods, onChange }: Sign
         </div>
         <div className="flex flex-wrap gap-2">
           {disproportionalityMethods.map((method) => (
-            <button
-              key={method.id}
-              onClick={() => toggleMethod(method.id)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                selectedMethods.includes(method.id)
-                  ? 'bg-purple-100 text-purple-800 border-2 border-purple-300'
-                  : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
-              }`}
-              title={method.description}
-            >
-              {method.label}
-            </button>
+            <div key={method.id} className="flex items-center gap-1">
+              <button
+                onClick={() => toggleMethod(method.id)}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  selectedMethods.includes(method.id)
+                    ? 'bg-purple-100 text-purple-800 border-2 border-purple-300'
+                    : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
+                }`}
+                title={method.description}
+              >
+                {method.label}
+              </button>
+              <MethodInfoTooltip method={method.id} compact />
+            </div>
           ))}
         </div>
       </div>
