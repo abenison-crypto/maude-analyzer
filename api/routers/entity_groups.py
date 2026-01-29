@@ -11,7 +11,7 @@ import uuid
 import json
 import sqlite3
 from pathlib import Path
-from os import commonprefix
+from os.path import commonprefix
 
 from api.models.entity_group_schemas import (
     EntityType,
