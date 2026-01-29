@@ -141,14 +141,8 @@ class SignalDetectionService:
         """)
         max_date = result[0] if result and result[0] else date.today()
 
-        # Handle incomplete recent data (2020+)
-        if max_date.year >= 2020:
-            check = self.db.fetch_one("""
-                SELECT MAX(date_received) FROM master_events
-                WHERE manufacturer_clean IS NOT NULL AND EXTRACT(YEAR FROM date_received) = 2019
-            """)
-            if check and check[0]:
-                max_date = check[0]
+        # Note: 2020-2021 have limited data due to FDA ingestion gap, but 2022+ has full data
+        # We use the actual max date from events with manufacturer data (already queried above)
 
         if config.mode == TimeComparisonMode.LOOKBACK:
             end_date = max_date

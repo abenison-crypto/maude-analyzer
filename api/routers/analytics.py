@@ -107,18 +107,9 @@ async def detect_signals(
 
     min_date, max_date = date_result[0]
 
-    # Use end of 2019 as reference if max_date is in a sparse period (2020+)
-    # This is a workaround for incomplete manufacturer_clean data in recent years
+    # Use actual max date from events with manufacturer data
+    # Note: 2020-2021 have limited data due to FDA ingestion gap, but 2022+ has full data
     reference_date = max_date
-    if max_date.year >= 2020:
-        # Check if there's better data in 2019
-        check_query = """
-            SELECT MAX(date_received) FROM master_events
-            WHERE manufacturer_clean IS NOT NULL AND EXTRACT(YEAR FROM date_received) = 2019
-        """
-        check_result = db.fetch_all(check_query)
-        if check_result and check_result[0][0]:
-            reference_date = check_result[0][0]
 
     # Build base filter using the reference date
     start_date = f"DATE '{reference_date}' - INTERVAL '{lookback_months}' MONTH"
