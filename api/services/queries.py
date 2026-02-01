@@ -11,18 +11,8 @@ from api.services.filters import (
     build_paginated_query,
     DeviceFilters,
 )
-from api.constants.columns import (
-    COLUMN_EVENT_TYPE,
-    COLUMN_MANUFACTURER_CLEAN,
-    COLUMN_PRODUCT_CODE,
-    EVENT_TYPE_CODES,
-)
-
-# Event type codes for SQL queries (avoid string literals)
-EVENT_CODE_DEATH = "D"
-EVENT_CODE_INJURY = "IN"
-EVENT_CODE_MALFUNCTION = "M"
-EVENT_CODE_OTHER = "O"
+from api.services.query_builder import SchemaAwareQueryBuilder
+from config.unified_schema import EVENT_TYPES, get_schema_registry
 
 
 class QueryService:
@@ -45,26 +35,43 @@ class QueryService:
         Returns:
             Dictionary with total, deaths, injuries, malfunctions counts.
         """
-        where_clause, params = build_extended_filter_clause(
-            manufacturers=manufacturers,
-            product_codes=product_codes,
-            event_types=event_types,
-            date_from=date_from,
-            date_to=date_to,
-            device_filters=device_filters,
+        # Build the base query using SchemaAwareQueryBuilder
+        builder = (
+            SchemaAwareQueryBuilder()
+            .select("master_events", [], validate=False)
+            .alias("m")
+            .add_count(alias="total")
         )
 
-        query = f"""
-            SELECT
-                COUNT(*) as total,
-                COUNT(CASE WHEN event_type = '{EVENT_CODE_DEATH}' THEN 1 END) as deaths,
-                COUNT(CASE WHEN event_type = '{EVENT_CODE_INJURY}' THEN 1 END) as injuries,
-                COUNT(CASE WHEN event_type = '{EVENT_CODE_MALFUNCTION}' THEN 1 END) as malfunctions,
-                COUNT(CASE WHEN event_type = '{EVENT_CODE_OTHER}' THEN 1 END) as other
-            FROM master_events m
-            WHERE {where_clause}
-        """
+        # Add case counts for each event type from schema
+        for code, event_type in EVENT_TYPES.items():
+            if code == "*":
+                continue
+            # Map code to output alias (deaths, injuries, malfunctions, other)
+            alias_map = {"D": "deaths", "IN": "injuries", "M": "malfunctions", "O": "other"}
+            alias = alias_map.get(code, event_type.name.lower())
+            builder.add_case_count("event_type", code, alias)
 
+        # Add filters
+        if manufacturers:
+            builder.where_in("manufacturer_clean", manufacturers)
+        if product_codes:
+            builder.where_in("product_code", product_codes)
+        if event_types:
+            builder.where_event_types(event_types)
+        if date_from or date_to:
+            builder.where_date_range("date_received", date_from, date_to)
+
+        # Handle device filters via extended filter clause
+        if device_filters:
+            where_clause, params = build_extended_filter_clause(
+                device_filters=device_filters,
+                table_alias="m",
+            )
+            if where_clause != "1=1":
+                builder.where(where_clause, params)
+
+        query, params = builder.build()
         result = self.db.fetch_one(query, params)
         return {
             "total": result[0],
@@ -337,35 +344,54 @@ class QueryService:
         Returns:
             List of time periods with counts.
         """
-        where_clause, params = build_filter_clause(
-            manufacturers=manufacturers,
-            product_codes=product_codes,
-            event_types=event_types,
-            date_from=date_from,
-            date_to=date_to,
-        )
-
+        # Determine date expression based on grouping
         if group_by == "day":
             date_expr = "date_received"
+            date_expr_full = "m.date_received"
         elif group_by == "year":
-            date_expr = "DATE_TRUNC('year', date_received)"
+            date_expr = "DATE_TRUNC('year', m.date_received)"
+            date_expr_full = date_expr
         else:
-            date_expr = "DATE_TRUNC('month', date_received)"
+            date_expr = "DATE_TRUNC('month', m.date_received)"
+            date_expr_full = date_expr
 
-        query = f"""
-            SELECT
-                {date_expr} as period,
-                COUNT(*) as total,
-                COUNT(CASE WHEN event_type = '{EVENT_CODE_DEATH}' THEN 1 END) as deaths,
-                COUNT(CASE WHEN event_type = '{EVENT_CODE_INJURY}' THEN 1 END) as injuries,
-                COUNT(CASE WHEN event_type = '{EVENT_CODE_MALFUNCTION}' THEN 1 END) as malfunctions
-            FROM master_events m
-            WHERE {where_clause}
-            AND date_received IS NOT NULL
-            GROUP BY {date_expr}
-            ORDER BY period
-        """
+        # Build query using SchemaAwareQueryBuilder
+        builder = (
+            SchemaAwareQueryBuilder()
+            .select("master_events", [], validate=False)
+            .alias("m")
+        )
 
+        # Add the period column (raw expression, no table alias prefix)
+        from api.services.query_builder import QueryColumn
+        builder._columns.append(QueryColumn(name=date_expr_full, alias="period"))
+        builder.add_count(alias="total")
+
+        # Add case counts for D, IN, M event types from schema
+        for code in ["D", "IN", "M"]:
+            event_type = EVENT_TYPES.get(code)
+            if event_type:
+                alias_map = {"D": "deaths", "IN": "injuries", "M": "malfunctions"}
+                builder.add_case_count("event_type", code, alias_map[code])
+
+        # Add filters
+        if manufacturers:
+            builder.where_in("manufacturer_clean", manufacturers)
+        if product_codes:
+            builder.where_in("product_code", product_codes)
+        if event_types:
+            builder.where_event_types(event_types)
+        if date_from or date_to:
+            builder.where_date_range("date_received", date_from, date_to)
+
+        # Ensure date_received is not null
+        builder.where_not_null("date_received")
+
+        # Group by the date expression and order by period
+        builder._group_by.append(date_expr_full)
+        builder._order_by.append("period ASC")
+
+        query, params = builder.build()
         results = self.db.fetch_all(query, params)
         return [
             {
@@ -394,33 +420,33 @@ class QueryService:
         Returns:
             List of manufacturer statistics.
         """
-        conditions = ["manufacturer_clean IN ({})".format(
-            ", ".join(["?" for _ in manufacturers])
-        )]
-        params = list(manufacturers)
+        # Build query using SchemaAwareQueryBuilder
+        builder = (
+            SchemaAwareQueryBuilder()
+            .select("master_events", [], validate=False)
+            .add_column("manufacturer_clean")
+            .add_count(alias="total")
+        )
 
-        if date_from:
-            conditions.append("date_received >= ?")
-            params.append(date_from.isoformat())
-        if date_to:
-            conditions.append("date_received <= ?")
-            params.append(date_to.isoformat())
+        # Add case counts for D, IN, M event types from schema
+        for code in ["D", "IN", "M"]:
+            event_type = EVENT_TYPES.get(code)
+            if event_type:
+                alias_map = {"D": "deaths", "IN": "injuries", "M": "malfunctions"}
+                builder.add_case_count("event_type", code, alias_map[code])
 
-        where_clause = " AND ".join(conditions)
+        # Add manufacturer filter
+        builder.where_in("manufacturer_clean", manufacturers)
 
-        query = f"""
-            SELECT
-                manufacturer_clean,
-                COUNT(*) as total,
-                COUNT(CASE WHEN event_type = '{EVENT_CODE_DEATH}' THEN 1 END) as deaths,
-                COUNT(CASE WHEN event_type = '{EVENT_CODE_INJURY}' THEN 1 END) as injuries,
-                COUNT(CASE WHEN event_type = '{EVENT_CODE_MALFUNCTION}' THEN 1 END) as malfunctions
-            FROM master_events
-            WHERE {where_clause}
-            GROUP BY manufacturer_clean
-            ORDER BY total DESC
-        """
+        # Add date filters
+        if date_from or date_to:
+            builder.where_date_range("date_received", date_from, date_to)
 
+        # Group and order
+        builder.group_by("manufacturer_clean")
+        builder.order_by("total", desc=True, table_alias=None)
+
+        query, params = builder.build()
         results = self.db.fetch_all(query, params)
         return [
             {

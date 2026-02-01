@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import date
 from dataclasses import dataclass
 
-from api.constants.columns import EVENT_TYPE_FILTER_MAPPING
+from config.unified_schema import convert_filter_event_types
 
 
 @dataclass
@@ -56,7 +56,7 @@ def build_filter_clause(
 
     if event_types:
         # Map filter codes to database codes (e.g., I -> IN for injury)
-        db_types = [EVENT_TYPE_FILTER_MAPPING.get(t, t) for t in event_types]
+        db_types = convert_filter_event_types(event_types)
         placeholders = ", ".join(["?" for _ in db_types])
         conditions.append(f"{table_alias}.event_type IN ({placeholders})")
         params.extend(db_types)

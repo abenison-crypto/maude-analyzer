@@ -293,8 +293,8 @@ class SignalDetectionService:
 
         # Event type filter
         if request.event_types:
-            from api.constants.columns import EVENT_TYPE_FILTER_MAPPING
-            db_types = [EVENT_TYPE_FILTER_MAPPING.get(t, t) for t in request.event_types]
+            from config.unified_schema import convert_filter_event_types
+            db_types = convert_filter_event_types(request.event_types)
             placeholders = ", ".join(["?" for _ in db_types])
             conditions.append(f"m.event_type IN ({placeholders})")
             params.extend(db_types)
