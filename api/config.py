@@ -1,7 +1,7 @@
 """FastAPI application settings."""
 
 from pathlib import Path
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 import os
 
@@ -41,8 +41,7 @@ class Settings(BaseSettings):
     # Production mode
     production: bool = os.getenv("MAUDE_PRODUCTION", "false").lower() == "true"
 
-    class Config:
-        env_prefix = "MAUDE_"
+    model_config = SettingsConfigDict(env_prefix="MAUDE_")
 
 
 @lru_cache

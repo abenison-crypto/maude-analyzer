@@ -1,5 +1,6 @@
 """MAUDE Analyzer FastAPI Application."""
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -16,10 +17,21 @@ from config.unified_schema import SCHEMA_VERSION
 
 settings = get_settings()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup/shutdown events."""
+    # Startup
+    validate_schema_on_startup()
+    yield
+    # Shutdown (nothing to do)
+
+
 app = FastAPI(
     title=settings.app_name,
     version=settings.version,
     description="API for FDA MAUDE (Manufacturer and User Facility Device Experience) data analysis",
+    lifespan=lifespan,
 )
 
 
@@ -86,12 +98,6 @@ app.include_router(data_quality.router, prefix="/api", tags=["Data Quality"])
 app.include_router(filters.router, prefix="/api/filters", tags=["Filters"])
 app.include_router(presets.router, prefix="/api/presets", tags=["Presets"])
 app.include_router(entity_groups.router, prefix="/api/entity-groups", tags=["Entity Groups"])
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Run schema validation on startup."""
-    validate_schema_on_startup()
 
 
 @app.get("/api")

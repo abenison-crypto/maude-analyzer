@@ -95,7 +95,7 @@ class TestStatisticsFunctions:
 
         # Create sample trend data
         df = pd.DataFrame({
-            "period": pd.date_range("2024-01-01", periods=6, freq="M"),
+            "period": pd.date_range("2024-01-01", periods=6, freq="ME"),
             "count": [10, 12, 15, 18, 22, 25]  # Increasing trend
         })
 
@@ -110,7 +110,7 @@ class TestStatisticsFunctions:
         from src.analysis.statistics import analyze_trend
 
         df = pd.DataFrame({
-            "period": pd.date_range("2024-01-01", periods=6, freq="M"),
+            "period": pd.date_range("2024-01-01", periods=6, freq="ME"),
             "count": [25, 22, 18, 15, 12, 10]  # Decreasing trend
         })
 
