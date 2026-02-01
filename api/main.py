@@ -7,6 +7,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from api.config import get_settings
 from api.routers import events, analytics, admin, data_quality, filters, presets, entity_groups
+from api.middleware.schema_validation import (
+    SchemaVersionMiddleware,
+    validate_schema_on_startup,
+    get_schema_info,
+)
+from config.unified_schema import SCHEMA_VERSION
 
 settings = get_settings()
 
@@ -57,6 +63,9 @@ class CacheHeaderMiddleware(BaseHTTPMiddleware):
         return response
 
 
+# Add schema version middleware (adds X-Schema-Version header)
+app.add_middleware(SchemaVersionMiddleware)
+
 # Add cache header middleware
 app.add_middleware(CacheHeaderMiddleware)
 
@@ -79,18 +88,30 @@ app.include_router(presets.router, prefix="/api/presets", tags=["Presets"])
 app.include_router(entity_groups.router, prefix="/api/entity-groups", tags=["Entity Groups"])
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Run schema validation on startup."""
+    validate_schema_on_startup()
+
+
 @app.get("/api")
 async def api_root():
     """API root endpoint with API info."""
+    schema_info = get_schema_info()
     return {
         "name": settings.app_name,
         "version": settings.version,
+        "schema_version": SCHEMA_VERSION,
         "docs": "/docs",
         "endpoints": {
             "events": "/api/events",
             "analytics": "/api/analytics",
             "admin": "/api/admin",
             "data_quality": "/api/data-quality",
+        },
+        "schema": {
+            "version": schema_info["schema_version"],
+            "tables": schema_info["tables"],
         },
     }
 

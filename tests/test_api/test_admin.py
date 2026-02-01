@@ -119,11 +119,14 @@ class TestRoot:
     """Tests for GET / endpoint."""
 
     def test_root(self, client):
-        """Test root endpoint."""
-        response = client.get("/")
+        """Test API root endpoint."""
+        response = client.get("/api")
         assert response.status_code == 200
 
         data = response.json()
         assert "name" in data
         assert "version" in data
         assert "endpoints" in data
+        # Verify schema info is included (from unified schema)
+        assert "schema_version" in data
+        assert "schema" in data

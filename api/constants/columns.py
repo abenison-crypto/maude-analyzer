@@ -1,18 +1,38 @@
 """
 Column and Schema Constants for MAUDE Analyzer API.
 
-This module centralizes all column names, event type mappings, and table
-definitions to avoid hardcoding throughout the codebase.
+This module provides backward-compatible column name constants and event type
+mappings. The actual definitions now live in the Unified Schema Registry.
 
-Import from this module instead of using string literals for column names.
+IMPORTANT: New code should import from config.unified_schema instead.
+This module is maintained for backward compatibility.
+
+For new code, use:
+    from config.unified_schema import get_schema_registry
+    registry = get_schema_registry()
+    registry.get_column("master_events", "event_type")
 """
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+# Import from unified schema for single source of truth
+from config.unified_schema import (
+    get_schema_registry,
+    EVENT_TYPES as _EVENT_TYPES,
+    EVENT_TYPE_FILTER_TO_DB,
+    EVENT_TYPE_DB_TO_FILTER,
+    EVENT_TYPE_CODES as _EVENT_TYPE_CODES,
+    OUTCOME_CODES as _OUTCOME_CODES,
+    TEXT_TYPE_CODES as _TEXT_TYPE_CODES,
+    get_event_type_name,
+    get_event_type_code,
+    convert_filter_event_types,
+)
+
 
 # =============================================================================
-# COLUMN NAME CONSTANTS
+# COLUMN NAME CONSTANTS (Backward Compatibility)
 # =============================================================================
 
 # Master Events Table
@@ -65,7 +85,7 @@ COLUMN_TEXT_CONTENT = "text_content"
 
 
 # =============================================================================
-# TABLE DEFINITIONS
+# TABLE DEFINITIONS (Backward Compatibility)
 # =============================================================================
 
 @dataclass
@@ -94,30 +114,42 @@ class Tables:
     @classmethod
     def get_definition(cls, table_name: str) -> Optional[TableDefinition]:
         """Get table definition by name."""
+        # Try to get from unified schema registry first
+        registry = get_schema_registry()
+        table = registry.get_table(table_name)
+        if table:
+            return TableDefinition(
+                name=table.name,
+                primary_key=table.primary_key,
+                display_name=table.display_name,
+                description=table.description
+            )
+
+        # Fallback for tables not in registry (product_codes, etc.)
         definitions = {
-            cls.MASTER_EVENTS: TableDefinition(
-                name=cls.MASTER_EVENTS,
-                primary_key=COLUMN_MDR_REPORT_KEY,
-                display_name="Master Events",
-                description="Primary MDR event records"
+            cls.PRODUCT_CODES: TableDefinition(
+                name=cls.PRODUCT_CODES,
+                primary_key="product_code",
+                display_name="Product Codes",
+                description="FDA product classification codes"
             ),
-            cls.DEVICES: TableDefinition(
-                name=cls.DEVICES,
-                primary_key="id",
-                display_name="Devices",
-                description="Device information linked to events"
+            cls.PROBLEM_CODES: TableDefinition(
+                name=cls.PROBLEM_CODES,
+                primary_key="problem_code",
+                display_name="Problem Codes",
+                description="Device problem code lookup"
             ),
-            cls.PATIENTS: TableDefinition(
-                name=cls.PATIENTS,
+            cls.MANUFACTURERS: TableDefinition(
+                name=cls.MANUFACTURERS,
                 primary_key="id",
-                display_name="Patients",
-                description="Patient information and outcomes"
+                display_name="Manufacturers",
+                description="Manufacturer lookup table"
             ),
-            cls.MDR_TEXT: TableDefinition(
-                name=cls.MDR_TEXT,
+            cls.DAILY_AGGREGATES: TableDefinition(
+                name=cls.DAILY_AGGREGATES,
                 primary_key="id",
-                display_name="MDR Text",
-                description="Narrative text records"
+                display_name="Daily Aggregates",
+                description="Pre-computed daily statistics"
             ),
         }
         return definitions.get(table_name)
@@ -127,7 +159,7 @@ TABLES = Tables
 
 
 # =============================================================================
-# EVENT TYPE MAPPINGS
+# EVENT TYPE MAPPINGS (Now sourced from Unified Schema)
 # =============================================================================
 
 @dataclass
@@ -142,86 +174,40 @@ class EventTypeInfo:
     text_class: str
 
 
-# Event types used in the database
+# Build EVENT_TYPES from unified schema for backward compatibility
 EVENT_TYPES: Dict[str, EventTypeInfo] = {
-    "D": EventTypeInfo(
-        code="D",
-        name="Death",
-        description="Patient death associated with device",
-        severity=1,
-        color="#dc2626",
-        bg_class="bg-red-100",
-        text_class="text-red-800"
-    ),
-    "IN": EventTypeInfo(
-        code="IN",
-        name="Injury",
-        description="Patient injury associated with device",
-        severity=2,
-        color="#ea580c",
-        bg_class="bg-orange-100",
-        text_class="text-orange-800"
-    ),
-    "M": EventTypeInfo(
-        code="M",
-        name="Malfunction",
-        description="Device malfunction",
-        severity=3,
-        color="#ca8a04",
-        bg_class="bg-yellow-100",
-        text_class="text-yellow-800"
-    ),
-    "O": EventTypeInfo(
-        code="O",
-        name="Other",
-        description="Other event type",
-        severity=4,
-        color="#6b7280",
-        bg_class="bg-gray-100",
-        text_class="text-gray-800"
-    ),
-    "*": EventTypeInfo(
-        code="*",
-        name="Unknown",
-        description="No answer provided",
-        severity=5,
-        color="#9ca3af",
-        bg_class="bg-gray-50",
-        text_class="text-gray-600"
-    ),
+    code: EventTypeInfo(
+        code=et.db_code,
+        name=et.name,
+        description=et.description,
+        severity=et.severity,
+        color=et.color,
+        bg_class=et.bg_class,
+        text_class=et.text_class
+    )
+    for code, et in _EVENT_TYPES.items()
 }
 
-# Code mapping for filter compatibility
+# Code mapping for filter compatibility (from unified schema)
 # Frontend uses 'I' for injury, database uses 'IN'
-EVENT_TYPE_FILTER_MAPPING: Dict[str, str] = {
-    "I": "IN",  # Filter uses I, database uses IN
-    "D": "D",
-    "M": "M",
-    "O": "O",
-}
+EVENT_TYPE_FILTER_MAPPING: Dict[str, str] = EVENT_TYPE_FILTER_TO_DB
 
 # Reverse mapping (database code to filter code)
-EVENT_TYPE_CODE_TO_FILTER: Dict[str, str] = {
-    "IN": "I",
-    "D": "D",
-    "M": "M",
-    "O": "O",
-}
+EVENT_TYPE_CODE_TO_FILTER: Dict[str, str] = EVENT_TYPE_DB_TO_FILTER
 
 # All valid event type codes in the database
-EVENT_TYPE_CODES: List[str] = ["D", "IN", "M", "O", "*"]
+EVENT_TYPE_CODES: List[str] = _EVENT_TYPE_CODES
 
 # Display-friendly list for dropdowns/filters
 EVENT_TYPE_OPTIONS: List[Dict[str, str]] = [
-    {"value": "D", "label": "Death", "filter_code": "D"},
-    {"value": "IN", "label": "Injury", "filter_code": "I"},
-    {"value": "M", "label": "Malfunction", "filter_code": "M"},
-    {"value": "O", "label": "Other", "filter_code": "O"},
+    {"value": et.db_code, "label": et.name, "filter_code": et.filter_code}
+    for et in _EVENT_TYPES.values()
+    if et.db_code != "*"  # Exclude unknown
 ]
 
 
 # =============================================================================
-# PATIENT OUTCOME MAPPINGS
+# PATIENT OUTCOME MAPPINGS (Now sourced from Unified Schema)
 # =============================================================================
 
 @dataclass
@@ -234,40 +220,21 @@ class OutcomeInfo:
     color_class: str
 
 
+# Build OUTCOME_CODES from unified schema
 OUTCOME_CODES: Dict[str, OutcomeInfo] = {
-    "D": OutcomeInfo(
-        code="D",
-        name="Death",
-        field=COLUMN_OUTCOME_DEATH,
-        severity=1,
-        color_class="bg-red-100 text-red-800"
-    ),
-    "L": OutcomeInfo(
-        code="L",
-        name="Life Threatening",
-        field=COLUMN_OUTCOME_LIFE_THREATENING,
-        severity=2,
-        color_class="bg-yellow-100 text-yellow-800"
-    ),
-    "H": OutcomeInfo(
-        code="H",
-        name="Hospitalization",
-        field=COLUMN_OUTCOME_HOSPITALIZATION,
-        severity=3,
-        color_class="bg-orange-100 text-orange-800"
-    ),
-    "DS": OutcomeInfo(
-        code="DS",
-        name="Disability",
-        field=COLUMN_OUTCOME_DISABILITY,
-        severity=4,
-        color_class="bg-purple-100 text-purple-800"
-    ),
+    code: OutcomeInfo(
+        code=out.code,
+        name=out.name,
+        field=out.db_field,
+        severity=out.severity,
+        color_class=out.color_class
+    )
+    for code, out in _OUTCOME_CODES.items()
 }
 
 
 # =============================================================================
-# TEXT TYPE MAPPINGS
+# TEXT TYPE MAPPINGS (Now sourced from Unified Schema)
 # =============================================================================
 
 @dataclass
@@ -279,71 +246,25 @@ class TextTypeInfo:
     priority: int
 
 
+# Build TEXT_TYPE_CODES from unified schema
 TEXT_TYPE_CODES: Dict[str, TextTypeInfo] = {
-    "D": TextTypeInfo(
-        code="D",
-        name="Event Description",
-        description="Primary event description narrative",
-        priority=1
-    ),
-    "H": TextTypeInfo(
-        code="H",
-        name="Event History",
-        description="Historical context of event",
-        priority=2
-    ),
-    "M": TextTypeInfo(
-        code="M",
-        name="Manufacturer Narrative",
-        description="Manufacturer's description",
-        priority=3
-    ),
-    "E": TextTypeInfo(
-        code="E",
-        name="Evaluation Summary",
-        description="Evaluation/assessment summary",
-        priority=4
-    ),
-    "N": TextTypeInfo(
-        code="N",
-        name="Additional Information",
-        description="Additional notes and information",
-        priority=5
-    ),
+    code: TextTypeInfo(
+        code=tt.code,
+        name=tt.name,
+        description=tt.description,
+        priority=tt.priority
+    )
+    for code, tt in _TEXT_TYPE_CODES.items()
 }
 
 
 # =============================================================================
-# HELPER FUNCTIONS
+# HELPER FUNCTIONS (Now delegate to Unified Schema)
 # =============================================================================
 
-def get_event_type_name(code: str) -> str:
-    """
-    Get the display name for an event type code.
-
-    Args:
-        code: Event type code (D, IN, M, O, *)
-
-    Returns:
-        Display name (e.g., "Death", "Injury")
-    """
-    event_type = EVENT_TYPES.get(code)
-    return event_type.name if event_type else code
-
-
-def get_event_type_code(filter_code: str) -> str:
-    """
-    Convert a filter code to database code.
-
-    Handles the I -> IN conversion for injury.
-
-    Args:
-        filter_code: Filter code (D, I, M, O)
-
-    Returns:
-        Database code (D, IN, M, O)
-    """
-    return EVENT_TYPE_FILTER_MAPPING.get(filter_code, filter_code)
+# get_event_type_name is imported from unified_schema
+# get_event_type_code is imported from unified_schema
+# convert_filter_event_types is imported from unified_schema
 
 
 def get_event_type_display(code: str) -> Dict[str, str]:
@@ -376,19 +297,6 @@ def get_manufacturer_column(prefer_clean: bool = True) -> str:
         Column name to use for manufacturer queries
     """
     return COLUMN_MANUFACTURER_CLEAN if prefer_clean else COLUMN_MANUFACTURER_NAME
-
-
-def convert_filter_event_types(event_types: List[str]) -> List[str]:
-    """
-    Convert filter event types to database event types.
-
-    Args:
-        event_types: List of filter codes (may include 'I')
-
-    Returns:
-        List of database codes (with 'I' converted to 'IN')
-    """
-    return [get_event_type_code(et) for et in event_types]
 
 
 def get_text_type_name(code: str) -> str:

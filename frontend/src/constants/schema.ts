@@ -1,113 +1,69 @@
 /**
  * Schema Constants for MAUDE Analyzer Frontend
  *
- * This module centralizes all schema-related constants including event types,
- * outcome codes, and column configurations. Import from here instead of
- * hardcoding values in components.
+ * This module provides backward-compatible exports while sourcing data from
+ * the auto-generated schema types.
+ *
+ * IMPORTANT: The actual type definitions are now in types/generated/schema.ts.
+ * This file re-exports them for backward compatibility.
+ *
+ * For new code, prefer importing directly from:
+ *   import { EVENT_TYPES, FIELDS, ... } from '../types/generated/schema'
  */
+
+// Re-export everything from generated schema
+export {
+  SCHEMA_VERSION,
+  // Table interfaces
+  type MasterEvents,
+  type Devices,
+  type Patients,
+  type MdrText,
+  type DeviceProblems,
+  type PatientProblems,
+  // Field constants
+  FIELDS,
+  type FieldName,
+  // Event types
+  type EventTypeInfo,
+  EVENT_TYPES,
+  FILTER_TO_DB_CODE,
+  DB_TO_FILTER_CODE,
+  EVENT_TYPE_OPTIONS,
+  type EventTypeDbCode,
+  type EventTypeFilterCode,
+  // Outcomes
+  type OutcomeInfo,
+  OUTCOME_CODES,
+  type OutcomeCode,
+  // Text types
+  type TextTypeInfo,
+  TEXT_TYPE_CODES,
+  type TextTypeCode,
+  // Helper functions
+  filterToDbCode,
+  dbToFilterCode,
+  getEventTypeDisplay,
+  getTextTypeName,
+  getOutcomeName,
+  convertFilterEventTypes,
+} from '../types/generated/schema'
 
 // =============================================================================
-// EVENT TYPE DEFINITIONS
+// BACKWARD COMPATIBILITY EXPORTS
 // =============================================================================
 
-export interface EventTypeInfo {
-  code: string
-  dbCode: string // Code used in database (e.g., 'IN' for injury)
-  filterCode: string // Code used in filters/URL (e.g., 'I' for injury)
-  name: string
-  description: string
-  severity: number
-  color: string
-  bgClass: string
-  textClass: string
-}
+// These are kept for backward compatibility with existing code that uses
+// the old interface style. New code should use the generated types.
 
-/**
- * Event types with full metadata.
- * Note: Database uses 'IN' for injury, but filter/URL uses 'I' for brevity.
- */
-export const EVENT_TYPES: Record<string, EventTypeInfo> = {
-  D: {
-    code: 'D',
-    dbCode: 'D',
-    filterCode: 'D',
-    name: 'Death',
-    description: 'Patient death associated with device',
-    severity: 1,
-    color: '#dc2626',
-    bgClass: 'bg-red-100',
-    textClass: 'text-red-800',
-  },
-  IN: {
-    code: 'IN',
-    dbCode: 'IN',
-    filterCode: 'I',
-    name: 'Injury',
-    description: 'Patient injury associated with device',
-    severity: 2,
-    color: '#ea580c',
-    bgClass: 'bg-orange-100',
-    textClass: 'text-orange-800',
-  },
-  M: {
-    code: 'M',
-    dbCode: 'M',
-    filterCode: 'M',
-    name: 'Malfunction',
-    description: 'Device malfunction',
-    severity: 3,
-    color: '#ca8a04',
-    bgClass: 'bg-yellow-100',
-    textClass: 'text-yellow-800',
-  },
-  O: {
-    code: 'O',
-    dbCode: 'O',
-    filterCode: 'O',
-    name: 'Other',
-    description: 'Other event type',
-    severity: 4,
-    color: '#6b7280',
-    bgClass: 'bg-gray-100',
-    textClass: 'text-gray-800',
-  },
-}
-
-/**
- * Event type options for filter dropdowns/buttons.
- * Uses filter codes (I instead of IN) for URL compatibility.
- */
-export const EVENT_TYPE_OPTIONS = [
-  { value: 'D', label: 'Death' },
-  { value: 'I', label: 'Injury' },
-  { value: 'M', label: 'Malfunction' },
-  { value: 'O', label: 'Other' },
-] as const
-
-/**
- * Maps filter codes to database codes.
- * Filter uses 'I' for injury, database uses 'IN'.
- */
-export const FILTER_TO_DB_CODE: Record<string, string> = {
-  D: 'D',
-  I: 'IN',
-  M: 'M',
-  O: 'O',
-}
-
-/**
- * Maps database codes to filter codes.
- */
-export const DB_TO_FILTER_CODE: Record<string, string> = {
-  D: 'D',
-  IN: 'I',
-  M: 'M',
-  O: 'O',
-}
+// Note: EVENT_TYPES, EVENT_TYPE_OPTIONS, FILTER_TO_DB_CODE, and DB_TO_FILTER_CODE
+// are now exported from types/generated/schema.ts above.
 
 // =============================================================================
-// EVENT TYPE DISPLAY CONFIGURATION
+// EVENT TYPE DISPLAY CONFIGURATION (Backward Compatibility)
 // =============================================================================
+
+import { EVENT_TYPES as _ET, getEventTypeDisplay as _getDisplay } from '../types/generated/schema'
 
 export interface EventTypeDisplay {
   label: string
@@ -117,77 +73,20 @@ export interface EventTypeDisplay {
 /**
  * Display configuration for event type badges/labels.
  * Keyed by database code (D, IN, M, O).
+ * @deprecated Use getEventTypeDisplay() from generated schema instead
  */
 export const EVENT_TYPE_LABELS: Record<string, EventTypeDisplay> = {
-  D: { label: 'Death', color: 'bg-red-100 text-red-800' },
-  IN: { label: 'Injury', color: 'bg-orange-100 text-orange-800' },
-  M: { label: 'Malfunction', color: 'bg-yellow-100 text-yellow-800' },
-  O: { label: 'Other', color: 'bg-gray-100 text-gray-800' },
+  D: { label: _ET.D.name, color: `${_ET.D.bgClass} ${_ET.D.textClass}` },
+  IN: { label: _ET.IN.name, color: `${_ET.IN.bgClass} ${_ET.IN.textClass}` },
+  M: { label: _ET.M.name, color: `${_ET.M.bgClass} ${_ET.M.textClass}` },
+  O: { label: _ET.O.name, color: `${_ET.O.bgClass} ${_ET.O.textClass}` },
 }
 
 // =============================================================================
-// PATIENT OUTCOME DEFINITIONS
+// PATIENT OUTCOME DEFINITIONS (Now from Generated Schema)
 // =============================================================================
 
-export interface OutcomeInfo {
-  code: string
-  name: string
-  field: string
-  severity: number
-  colorClass: string
-}
-
-export const OUTCOME_CODES: Record<string, OutcomeInfo> = {
-  D: {
-    code: 'D',
-    name: 'Death',
-    field: 'outcome_death',
-    severity: 1,
-    colorClass: 'bg-red-100 text-red-800',
-  },
-  L: {
-    code: 'L',
-    name: 'Life Threatening',
-    field: 'outcome_life_threatening',
-    severity: 2,
-    colorClass: 'bg-yellow-100 text-yellow-800',
-  },
-  H: {
-    code: 'H',
-    name: 'Hospitalization',
-    field: 'outcome_hospitalization',
-    severity: 3,
-    colorClass: 'bg-orange-100 text-orange-800',
-  },
-  DS: {
-    code: 'DS',
-    name: 'Disability',
-    field: 'outcome_disability',
-    severity: 4,
-    colorClass: 'bg-purple-100 text-purple-800',
-  },
-  CA: {
-    code: 'CA',
-    name: 'Congenital Anomaly',
-    field: 'outcome_congenital_anomaly',
-    severity: 5,
-    colorClass: 'bg-pink-100 text-pink-800',
-  },
-  RI: {
-    code: 'RI',
-    name: 'Required Intervention',
-    field: 'outcome_required_intervention',
-    severity: 6,
-    colorClass: 'bg-blue-100 text-blue-800',
-  },
-  OT: {
-    code: 'OT',
-    name: 'Other',
-    field: 'outcome_other',
-    severity: 7,
-    colorClass: 'bg-gray-100 text-gray-800',
-  },
-}
+// OUTCOME_CODES is now exported from types/generated/schema.ts above.
 
 /**
  * Outcome badges for patient detail display.
@@ -200,94 +99,22 @@ export const OUTCOME_BADGES = [
 ] as const
 
 // =============================================================================
-// TEXT TYPE DEFINITIONS
+// TEXT TYPE DEFINITIONS (Now from Generated Schema)
 // =============================================================================
 
-export interface TextTypeInfo {
-  code: string
-  name: string
-  description: string
-  priority: number
-}
-
-export const TEXT_TYPE_CODES: Record<string, TextTypeInfo> = {
-  D: {
-    code: 'D',
-    name: 'Event Description',
-    description: 'Primary event description narrative',
-    priority: 1,
-  },
-  H: {
-    code: 'H',
-    name: 'Event History',
-    description: 'Historical context of event',
-    priority: 2,
-  },
-  M: {
-    code: 'M',
-    name: 'Manufacturer Narrative',
-    description: "Manufacturer's description",
-    priority: 3,
-  },
-  E: {
-    code: 'E',
-    name: 'Evaluation Summary',
-    description: 'Evaluation/assessment summary',
-    priority: 4,
-  },
-  N: {
-    code: 'N',
-    name: 'Additional Information',
-    description: 'Additional notes and information',
-    priority: 5,
-  },
-}
+// TEXT_TYPE_CODES is now exported from types/generated/schema.ts above.
 
 // =============================================================================
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS (Now from Generated Schema)
 // =============================================================================
 
-/**
- * Get event type display info by database code.
- */
-export function getEventTypeDisplay(dbCode: string): EventTypeDisplay {
-  return (
-    EVENT_TYPE_LABELS[dbCode] || {
-      label: dbCode || 'Unknown',
-      color: 'bg-gray-100 text-gray-800',
-    }
-  )
-}
-
-/**
- * Convert filter code to database code.
- * Handles I -> IN conversion for injury.
- */
-export function filterToDbCode(filterCode: string): string {
-  return FILTER_TO_DB_CODE[filterCode] || filterCode
-}
-
-/**
- * Convert database code to filter code.
- * Handles IN -> I conversion for injury.
- */
-export function dbToFilterCode(dbCode: string): string {
-  return DB_TO_FILTER_CODE[dbCode] || dbCode
-}
-
-/**
- * Get text type display name.
- */
-export function getTextTypeName(code: string): string {
-  return TEXT_TYPE_CODES[code]?.name || code
-}
-
-/**
- * Get outcome display name.
- */
-export function getOutcomeName(code: string): string {
-  return OUTCOME_CODES[code]?.name || code
-}
+// All helper functions are now exported from types/generated/schema.ts above:
+// - getEventTypeDisplay
+// - filterToDbCode
+// - dbToFilterCode
+// - getTextTypeName
+// - getOutcomeName
+// - convertFilterEventTypes
 
 // =============================================================================
 // COLUMN VISIBILITY CONFIGURATION
@@ -314,12 +141,12 @@ export const DEFAULT_EVENT_COLUMNS: ColumnConfig[] = [
 ]
 
 // =============================================================================
-// API FIELD NAMES
+// API FIELD NAMES (Backward Compatibility)
 // =============================================================================
 
 /**
  * Field names returned by the API.
- * Use these instead of string literals for type safety.
+ * @deprecated Use FIELDS from types/generated/schema.ts instead
  */
 export const API_FIELDS = {
   // Event fields

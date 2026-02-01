@@ -1,0 +1,1332 @@
+{
+  "version": "2.1",
+  "tables": {
+    "master_events": {
+      "name": "master_events",
+      "display_name": "Master Events",
+      "description": "Primary MDR event records",
+      "primary_key": "mdr_report_key",
+      "columns": [
+        {
+          "db_name": "mdr_report_key",
+          "fda_name": "MDR_REPORT_KEY",
+          "data_type": "BIGINT",
+          "nullable": false,
+          "api_name": "mdr_report_key",
+          "ts_type": "number",
+          "description": "Primary key",
+          "is_primary_key": true,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "event_key",
+          "fda_name": "EVENT_KEY",
+          "data_type": "BIGINT",
+          "nullable": true,
+          "api_name": "event_key",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "report_number",
+          "fda_name": "REPORT_NUMBER",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "report_number",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "report_source_code",
+          "fda_name": "REPORT_SOURCE_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "report_source_code",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "number_devices_in_event",
+          "fda_name": "NUMBER_DEVICES_IN_EVENT",
+          "data_type": "INTEGER",
+          "nullable": true,
+          "api_name": "number_devices_in_event",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "number_patients_in_event",
+          "fda_name": "NUMBER_PATIENTS_IN_EVENT",
+          "data_type": "INTEGER",
+          "nullable": true,
+          "api_name": "number_patients_in_event",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "date_received",
+          "fda_name": "DATE_RECEIVED",
+          "data_type": "DATE",
+          "nullable": true,
+          "api_name": "date_received",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "date_report",
+          "fda_name": "DATE_REPORT",
+          "data_type": "DATE",
+          "nullable": true,
+          "api_name": "date_report",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "date_of_event",
+          "fda_name": "DATE_OF_EVENT",
+          "data_type": "DATE",
+          "nullable": true,
+          "api_name": "date_of_event",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "adverse_event_flag",
+          "fda_name": "ADVERSE_EVENT_FLAG",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "adverse_event_flag",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "product_problem_flag",
+          "fda_name": "PRODUCT_PROBLEM_FLAG",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "product_problem_flag",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "reprocessed_and_reused_flag",
+          "fda_name": "REPROCESSED_AND_REUSED_FLAG",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "reprocessed_and_reused_flag",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "event_type",
+          "fda_name": "EVENT_TYPE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "event_type",
+          "ts_type": "string",
+          "description": "D=Death, IN=Injury, M=Malfunction, O=Other",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "event_location",
+          "fda_name": "EVENT_LOCATION",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "event_location",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "reporter_occupation_code",
+          "fda_name": "REPORTER_OCCUPATION_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "reporter_occupation_code",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "health_professional",
+          "fda_name": "HEALTH_PROFESSIONAL",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "health_professional",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "initial_report_to_fda",
+          "fda_name": "INITIAL_REPORT_TO_FDA",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "initial_report_to_fda",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "reporter_state_code",
+          "fda_name": "REPORTER_STATE_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "reporter_state_code",
+          "ts_type": "string",
+          "description": "Added in 86-column format",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": true
+        },
+        {
+          "db_name": "reporter_country_code",
+          "fda_name": "REPORTER_COUNTRY_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "reporter_country_code",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "manufacturer_name",
+          "fda_name": "MANUFACTURER_NAME",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "manufacturer_name",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "manufacturer_city",
+          "fda_name": "MANUFACTURER_CITY",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "manufacturer_city",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "manufacturer_state",
+          "fda_name": "MANUFACTURER_STATE_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "manufacturer_state",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "manufacturer_country",
+          "fda_name": "MANUFACTURER_COUNTRY_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "manufacturer_country",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "manufacturer_postal",
+          "fda_name": "MANUFACTURER_POSTAL_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "manufacturer_postal",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "manufacturer_clean",
+          "fda_name": "",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "manufacturer_clean",
+          "ts_type": "string",
+          "description": "Normalized manufacturer name for grouping",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "product_code",
+          "fda_name": "PMA_PMN_NUM",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "product_code",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "pma_pmn_number",
+          "fda_name": "PMA_PMN_NUM",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "pma_pmn_number",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "exemption_number",
+          "fda_name": "EXEMPTION_NUMBER",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "exemption_number",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "type_of_report",
+          "fda_name": "TYPE_OF_REPORT",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "type_of_report",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "source_type",
+          "fda_name": "SOURCE_TYPE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "source_type",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "mfr_report_type",
+          "fda_name": "MFR_REPORT_TYPE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "mfr_report_type",
+          "ts_type": "string",
+          "description": "Added in 86-column format",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": true
+        },
+        {
+          "db_name": "date_added",
+          "fda_name": "DATE_ADDED",
+          "data_type": "DATE",
+          "nullable": true,
+          "api_name": "date_added",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "date_changed",
+          "fda_name": "DATE_CHANGED",
+          "data_type": "DATE",
+          "nullable": true,
+          "api_name": "date_changed",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "received_year",
+          "fda_name": "",
+          "data_type": "INTEGER",
+          "nullable": true,
+          "api_name": "received_year",
+          "ts_type": "number",
+          "description": "Year extracted from date_received",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "received_month",
+          "fda_name": "",
+          "data_type": "INTEGER",
+          "nullable": true,
+          "api_name": "received_month",
+          "ts_type": "number",
+          "description": "Month extracted from date_received",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        }
+      ],
+      "foreign_keys": {}
+    },
+    "devices": {
+      "name": "devices",
+      "display_name": "Devices",
+      "description": "Device information linked to events",
+      "primary_key": "device_event_key",
+      "columns": [
+        {
+          "db_name": "mdr_report_key",
+          "fda_name": "MDR_REPORT_KEY",
+          "data_type": "BIGINT",
+          "nullable": false,
+          "api_name": "mdr_report_key",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": true,
+          "is_optional": false
+        },
+        {
+          "db_name": "device_event_key",
+          "fda_name": "DEVICE_EVENT_KEY",
+          "data_type": "BIGINT",
+          "nullable": true,
+          "api_name": "device_event_key",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "device_sequence_number",
+          "fda_name": "DEVICE_SEQUENCE_NO",
+          "data_type": "INTEGER",
+          "nullable": true,
+          "api_name": "device_sequence_number",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "brand_name",
+          "fda_name": "BRAND_NAME",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "brand_name",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "generic_name",
+          "fda_name": "GENERIC_NAME",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "generic_name",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "model_number",
+          "fda_name": "MODEL_NUMBER",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "model_number",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "catalog_number",
+          "fda_name": "CATALOG_NUMBER",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "catalog_number",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "lot_number",
+          "fda_name": "LOT_NUMBER",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "lot_number",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "other_id_number",
+          "fda_name": "OTHER_ID_NUMBER",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "other_id_number",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "manufacturer_d_name",
+          "fda_name": "MANUFACTURER_D_NAME",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "manufacturer_d_name",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "manufacturer_d_city",
+          "fda_name": "MANUFACTURER_D_CITY",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "manufacturer_d_city",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "manufacturer_d_state",
+          "fda_name": "MANUFACTURER_D_STATE_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "manufacturer_d_state",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "manufacturer_d_country",
+          "fda_name": "MANUFACTURER_D_COUNTRY_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "manufacturer_d_country",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "manufacturer_d_clean",
+          "fda_name": "",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "manufacturer_d_clean",
+          "ts_type": "string",
+          "description": "Normalized device manufacturer name",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "device_report_product_code",
+          "fda_name": "DEVICE_REPORT_PRODUCT_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "device_report_product_code",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "implant_flag",
+          "fda_name": "IMPLANT_FLAG",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "implant_flag",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "date_removed_flag",
+          "fda_name": "DATE_REMOVED_FLAG",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "date_removed_flag",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "device_availability",
+          "fda_name": "DEVICE_AVAILABILITY",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "device_availability",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "device_operator",
+          "fda_name": "DEVICE_OPERATOR",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "device_operator",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "date_received",
+          "fda_name": "DATE_RECEIVED",
+          "data_type": "DATE",
+          "nullable": true,
+          "api_name": "date_received",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "expiration_date_of_device",
+          "fda_name": "EXPIRATION_DATE_OF_DEVICE",
+          "data_type": "DATE",
+          "nullable": true,
+          "api_name": "expiration_date_of_device",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "date_returned_to_manufacturer",
+          "fda_name": "DATE_RETURNED_TO_MANUFACTURER",
+          "data_type": "DATE",
+          "nullable": true,
+          "api_name": "date_returned_to_manufacturer",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "implant_date_year",
+          "fda_name": "IMPLANT_DATE_YEAR",
+          "data_type": "INTEGER",
+          "nullable": true,
+          "api_name": "implant_date_year",
+          "ts_type": "number",
+          "description": "Added in 2020+ format",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": true
+        },
+        {
+          "db_name": "date_removed_year",
+          "fda_name": "DATE_REMOVED_YEAR",
+          "data_type": "INTEGER",
+          "nullable": true,
+          "api_name": "date_removed_year",
+          "ts_type": "number",
+          "description": "Added in 2020+ format",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": true
+        },
+        {
+          "db_name": "serviced_by_3rd_party_flag",
+          "fda_name": "SERVICED_BY_3RD_PARTY_FLAG",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "serviced_by_3rd_party_flag",
+          "ts_type": "string",
+          "description": "Added in 2020+ format",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": true
+        },
+        {
+          "db_name": "combination_product_flag",
+          "fda_name": "COMBINATION_PRODUCT_FLAG",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "combination_product_flag",
+          "ts_type": "string",
+          "description": "Added in 2020+ format",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": true
+        },
+        {
+          "db_name": "udi_di",
+          "fda_name": "UDI_DI",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "udi_di",
+          "ts_type": "string",
+          "description": "Unique Device Identifier - Device ID (2020+)",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": true
+        },
+        {
+          "db_name": "udi_public",
+          "fda_name": "UDI_PUBLIC",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "udi_public",
+          "ts_type": "string",
+          "description": "Unique Device Identifier - Public (2020+)",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": true
+        },
+        {
+          "db_name": "device_age_text",
+          "fda_name": "DEVICE_AGE_TEXT",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "device_age_text",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "device_evaluated_by_manufacturer",
+          "fda_name": "DEVICE_EVALUATED_BY_MANUFACTUR",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "device_evaluated_by_manufacturer",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        }
+      ],
+      "foreign_keys": {
+        "mdr_report_key": "master_events"
+      }
+    },
+    "patients": {
+      "name": "patients",
+      "display_name": "Patients",
+      "description": "Patient information and outcomes",
+      "primary_key": "mdr_report_key",
+      "columns": [
+        {
+          "db_name": "mdr_report_key",
+          "fda_name": "MDR_REPORT_KEY",
+          "data_type": "BIGINT",
+          "nullable": false,
+          "api_name": "mdr_report_key",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": true,
+          "is_optional": false
+        },
+        {
+          "db_name": "patient_sequence_number",
+          "fda_name": "PATIENT_SEQUENCE_NUMBER",
+          "data_type": "INTEGER",
+          "nullable": true,
+          "api_name": "patient_sequence_number",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "date_received",
+          "fda_name": "DATE_RECEIVED",
+          "data_type": "DATE",
+          "nullable": true,
+          "api_name": "date_received",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "patient_age",
+          "fda_name": "PATIENT_AGE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "patient_age",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "patient_sex",
+          "fda_name": "PATIENT_SEX",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "patient_sex",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "patient_weight",
+          "fda_name": "PATIENT_WEIGHT",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "patient_weight",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "patient_ethnicity",
+          "fda_name": "PATIENT_ETHNICITY",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "patient_ethnicity",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "patient_race",
+          "fda_name": "PATIENT_RACE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "patient_race",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "patient_age_numeric",
+          "fda_name": "",
+          "data_type": "DOUBLE",
+          "nullable": true,
+          "api_name": "patient_age_numeric",
+          "ts_type": "number",
+          "description": "Numeric age extracted from patient_age",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "outcome_death",
+          "fda_name": "",
+          "data_type": "BOOLEAN",
+          "nullable": true,
+          "api_name": "outcome_death",
+          "ts_type": "boolean",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "outcome_life_threatening",
+          "fda_name": "",
+          "data_type": "BOOLEAN",
+          "nullable": true,
+          "api_name": "outcome_life_threatening",
+          "ts_type": "boolean",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "outcome_hospitalization",
+          "fda_name": "",
+          "data_type": "BOOLEAN",
+          "nullable": true,
+          "api_name": "outcome_hospitalization",
+          "ts_type": "boolean",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "outcome_disability",
+          "fda_name": "",
+          "data_type": "BOOLEAN",
+          "nullable": true,
+          "api_name": "outcome_disability",
+          "ts_type": "boolean",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "outcome_congenital_anomaly",
+          "fda_name": "",
+          "data_type": "BOOLEAN",
+          "nullable": true,
+          "api_name": "outcome_congenital_anomaly",
+          "ts_type": "boolean",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "outcome_required_intervention",
+          "fda_name": "",
+          "data_type": "BOOLEAN",
+          "nullable": true,
+          "api_name": "outcome_required_intervention",
+          "ts_type": "boolean",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "outcome_other",
+          "fda_name": "",
+          "data_type": "BOOLEAN",
+          "nullable": true,
+          "api_name": "outcome_other",
+          "ts_type": "boolean",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        }
+      ],
+      "foreign_keys": {
+        "mdr_report_key": "master_events"
+      }
+    },
+    "mdr_text": {
+      "name": "mdr_text",
+      "display_name": "MDR Text",
+      "description": "Narrative text records",
+      "primary_key": "mdr_text_key",
+      "columns": [
+        {
+          "db_name": "mdr_report_key",
+          "fda_name": "MDR_REPORT_KEY",
+          "data_type": "BIGINT",
+          "nullable": false,
+          "api_name": "mdr_report_key",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": true,
+          "is_optional": false
+        },
+        {
+          "db_name": "mdr_text_key",
+          "fda_name": "MDR_TEXT_KEY",
+          "data_type": "BIGINT",
+          "nullable": true,
+          "api_name": "mdr_text_key",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "text_type_code",
+          "fda_name": "TEXT_TYPE_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "text_type_code",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "patient_sequence_number",
+          "fda_name": "PATIENT_SEQUENCE_NUMBER",
+          "data_type": "INTEGER",
+          "nullable": true,
+          "api_name": "patient_sequence_number",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "date_report",
+          "fda_name": "DATE_REPORT",
+          "data_type": "DATE",
+          "nullable": true,
+          "api_name": "date_report",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "text_content",
+          "fda_name": "FOI_TEXT",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "text_content",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        }
+      ],
+      "foreign_keys": {
+        "mdr_report_key": "master_events"
+      }
+    },
+    "device_problems": {
+      "name": "device_problems",
+      "display_name": "Device Problems",
+      "description": "Device problem codes linked to events",
+      "primary_key": "mdr_report_key",
+      "columns": [
+        {
+          "db_name": "mdr_report_key",
+          "fda_name": "MDR_REPORT_KEY",
+          "data_type": "BIGINT",
+          "nullable": false,
+          "api_name": "mdr_report_key",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": true,
+          "is_optional": false
+        },
+        {
+          "db_name": "device_problem_code",
+          "fda_name": "DEVICE_PROBLEM_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "device_problem_code",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        }
+      ],
+      "foreign_keys": {
+        "mdr_report_key": "master_events"
+      }
+    },
+    "patient_problems": {
+      "name": "patient_problems",
+      "display_name": "Patient Problems",
+      "description": "Patient problem codes linked to events",
+      "primary_key": "mdr_report_key",
+      "columns": [
+        {
+          "db_name": "mdr_report_key",
+          "fda_name": "MDR_REPORT_KEY",
+          "data_type": "BIGINT",
+          "nullable": false,
+          "api_name": "mdr_report_key",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": true,
+          "is_optional": false
+        },
+        {
+          "db_name": "patient_sequence_number",
+          "fda_name": "PATIENT_SEQUENCE_NO",
+          "data_type": "INTEGER",
+          "nullable": true,
+          "api_name": "patient_sequence_number",
+          "ts_type": "number",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "patient_problem_code",
+          "fda_name": "PROBLEM_CODE",
+          "data_type": "VARCHAR",
+          "nullable": true,
+          "api_name": "patient_problem_code",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "date_added",
+          "fda_name": "DATE_ADDED",
+          "data_type": "DATE",
+          "nullable": true,
+          "api_name": "date_added",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        },
+        {
+          "db_name": "date_changed",
+          "fda_name": "DATE_CHANGED",
+          "data_type": "DATE",
+          "nullable": true,
+          "api_name": "date_changed",
+          "ts_type": "string",
+          "description": "",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_optional": false
+        }
+      ],
+      "foreign_keys": {
+        "mdr_report_key": "master_events"
+      }
+    }
+  },
+  "event_types": {
+    "D": {
+      "db_code": "D",
+      "filter_code": "D",
+      "name": "Death",
+      "description": "Patient death associated with device",
+      "severity": 1,
+      "color": "#dc2626",
+      "bg_class": "bg-red-100",
+      "text_class": "text-red-800"
+    },
+    "IN": {
+      "db_code": "IN",
+      "filter_code": "I",
+      "name": "Injury",
+      "description": "Patient injury associated with device",
+      "severity": 2,
+      "color": "#ea580c",
+      "bg_class": "bg-orange-100",
+      "text_class": "text-orange-800"
+    },
+    "M": {
+      "db_code": "M",
+      "filter_code": "M",
+      "name": "Malfunction",
+      "description": "Device malfunction",
+      "severity": 3,
+      "color": "#ca8a04",
+      "bg_class": "bg-yellow-100",
+      "text_class": "text-yellow-800"
+    },
+    "O": {
+      "db_code": "O",
+      "filter_code": "O",
+      "name": "Other",
+      "description": "Other event type",
+      "severity": 4,
+      "color": "#6b7280",
+      "bg_class": "bg-gray-100",
+      "text_class": "text-gray-800"
+    },
+    "*": {
+      "db_code": "*",
+      "filter_code": "*",
+      "name": "Unknown",
+      "description": "No answer provided",
+      "severity": 5,
+      "color": "#9ca3af",
+      "bg_class": "bg-gray-50",
+      "text_class": "text-gray-600"
+    }
+  },
+  "outcome_codes": {
+    "D": {
+      "code": "D",
+      "name": "Death",
+      "db_field": "outcome_death",
+      "severity": 1,
+      "color_class": "bg-red-100 text-red-800"
+    },
+    "L": {
+      "code": "L",
+      "name": "Life Threatening",
+      "db_field": "outcome_life_threatening",
+      "severity": 2,
+      "color_class": "bg-yellow-100 text-yellow-800"
+    },
+    "H": {
+      "code": "H",
+      "name": "Hospitalization",
+      "db_field": "outcome_hospitalization",
+      "severity": 3,
+      "color_class": "bg-orange-100 text-orange-800"
+    },
+    "DS": {
+      "code": "DS",
+      "name": "Disability",
+      "db_field": "outcome_disability",
+      "severity": 4,
+      "color_class": "bg-purple-100 text-purple-800"
+    },
+    "CA": {
+      "code": "CA",
+      "name": "Congenital Anomaly",
+      "db_field": "outcome_congenital_anomaly",
+      "severity": 5,
+      "color_class": "bg-pink-100 text-pink-800"
+    },
+    "RI": {
+      "code": "RI",
+      "name": "Required Intervention",
+      "db_field": "outcome_required_intervention",
+      "severity": 6,
+      "color_class": "bg-blue-100 text-blue-800"
+    },
+    "OT": {
+      "code": "OT",
+      "name": "Other",
+      "db_field": "outcome_other",
+      "severity": 7,
+      "color_class": "bg-gray-100 text-gray-800"
+    }
+  },
+  "text_type_codes": {
+    "D": {
+      "code": "D",
+      "name": "Event Description",
+      "description": "Primary event description narrative",
+      "priority": 1
+    },
+    "H": {
+      "code": "H",
+      "name": "Event History",
+      "description": "Historical context of event",
+      "priority": 2
+    },
+    "M": {
+      "code": "M",
+      "name": "Manufacturer Narrative",
+      "description": "Manufacturer's description",
+      "priority": 3
+    },
+    "E": {
+      "code": "E",
+      "name": "Evaluation Summary",
+      "description": "Evaluation/assessment summary",
+      "priority": 4
+    },
+    "N": {
+      "code": "N",
+      "name": "Additional Information",
+      "description": "Additional notes and information",
+      "priority": 5
+    }
+  }
+}
