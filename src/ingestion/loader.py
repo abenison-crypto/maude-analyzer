@@ -136,6 +136,8 @@ MASTER_INSERT_COLUMNS = [
 DEVICE_INSERT_COLUMNS = [
     "mdr_report_key", "device_event_key",
     "implant_flag", "date_removed_flag", "device_sequence_number",
+    # New columns in 2020+ format (will be NULL for pre-2020 files)
+    "implant_date_year", "date_removed_year", "serviced_by_3rd_party_flag",
     "date_received",
     "brand_name", "generic_name",
     "manufacturer_d_name", "manufacturer_d_address_1", "manufacturer_d_address_2",
@@ -145,6 +147,8 @@ DEVICE_INSERT_COLUMNS = [
     "model_number", "catalog_number", "lot_number", "other_id_number",
     "device_operator", "device_availability", "date_returned_to_manufacturer",
     "device_report_product_code", "device_age_text", "device_evaluated_by_manufacturer",
+    # New columns at end in 2020+ format (will be NULL for pre-2020 files)
+    "combination_product_flag", "udi_di", "udi_public",
     "manufacturer_d_clean", "source_file",
 ]
 

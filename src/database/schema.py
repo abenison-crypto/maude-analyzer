@@ -208,8 +208,9 @@ CREATE TABLE IF NOT EXISTS master_events (
 """
 
 # =============================================================================
-# DEVICES TABLE (28 FDA columns + derived fields)
+# DEVICES TABLE (28 base FDA columns + 6 new columns in 2020+ + derived fields)
 # Informational FK: mdr_report_key -> master_events.mdr_report_key
+# Note: 2020+ device files have 34 columns (6 new fields added)
 # =============================================================================
 
 CREATE_DEVICES = """
@@ -226,6 +227,11 @@ CREATE TABLE IF NOT EXISTS devices (
     -- Device Flags
     implant_flag VARCHAR,
     date_removed_flag VARCHAR,
+
+    -- New fields in 2020+ format (positions 6-8 in file)
+    implant_date_year VARCHAR,              -- NEW in 2020
+    date_removed_year VARCHAR,              -- NEW in 2020
+    serviced_by_3rd_party_flag VARCHAR,     -- NEW in 2020
 
     -- Dates
     date_received DATE,
@@ -259,6 +265,11 @@ CREATE TABLE IF NOT EXISTS devices (
 
     -- Product Code
     device_report_product_code VARCHAR,
+
+    -- New fields at end in 2020+ format (positions 32-34 in file)
+    combination_product_flag VARCHAR,       -- NEW in 2020
+    udi_di VARCHAR,                         -- NEW in 2020: Unique Device Identifier - Device ID
+    udi_public VARCHAR,                     -- NEW in 2020: Unique Device Identifier - Public
 
     -- Derived fields
     manufacturer_d_clean VARCHAR,
