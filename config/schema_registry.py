@@ -209,11 +209,11 @@ MASTER_COLUMNS_FDA_84: List[str] = [
 MASTER_COLUMNS_FDA = MASTER_COLUMNS_FDA_86
 
 # =============================================================================
-# FDA DEVICE FILE COLUMNS (28 columns)
-# File: foidevthru{year}.txt, foidev.txt
+# FDA DEVICE FILE COLUMNS (28 columns - pre-2020 format)
+# File: foidevthru{year}.txt, foidev.txt, foidev{year}.txt (1998-2019)
 # =============================================================================
 
-DEVICE_COLUMNS_FDA: List[str] = [
+DEVICE_COLUMNS_FDA_28: List[str] = [
     "MDR_REPORT_KEY",                       # 1 - Foreign key to master
     "DEVICE_EVENT_KEY",                     # 2 - Unique device event key
     "IMPLANT_FLAG",                         # 3
@@ -243,6 +243,53 @@ DEVICE_COLUMNS_FDA: List[str] = [
     "DEVICE_AGE_TEXT",                      # 27
     "DEVICE_EVALUATED_BY_MANUFACTUR",       # 28 - Note: truncated in FDA
 ]
+
+# =============================================================================
+# FDA DEVICE FILE COLUMNS (34 columns - 2020+ extended format)
+# File: device{year}.txt (2020+)
+# Added 6 new fields: IMPLANT_DATE_YEAR, DATE_REMOVED_YEAR, SERVICED_BY_3RD_PARTY_FLAG,
+#                     COMBINATION_PRODUCT_FLAG, UDI_DI, UDI_PUBLIC
+# =============================================================================
+
+DEVICE_COLUMNS_FDA_34: List[str] = [
+    "MDR_REPORT_KEY",                       # 1 - Foreign key to master
+    "DEVICE_EVENT_KEY",                     # 2 - Unique device event key
+    "IMPLANT_FLAG",                         # 3
+    "DATE_REMOVED_FLAG",                    # 4
+    "DEVICE_SEQUENCE_NO",                   # 5 - Note: NO not NUMBER
+    "IMPLANT_DATE_YEAR",                    # 6 - NEW in 2020
+    "DATE_REMOVED_YEAR",                    # 7 - NEW in 2020
+    "SERVICED_BY_3RD_PARTY_FLAG",           # 8 - NEW in 2020
+    "DATE_RECEIVED",                        # 9 - (was col 6 in old format)
+    "BRAND_NAME",                           # 10 - Product brand name
+    "GENERIC_NAME",                         # 11 - Generic device name
+    "MANUFACTURER_D_NAME",                  # 12 - ACTUAL device manufacturer
+    "MANUFACTURER_D_ADDRESS_1",             # 13
+    "MANUFACTURER_D_ADDRESS_2",             # 14
+    "MANUFACTURER_D_CITY",                  # 15
+    "MANUFACTURER_D_STATE_CODE",            # 16
+    "MANUFACTURER_D_ZIP_CODE",              # 17
+    "MANUFACTURER_D_ZIP_CODE_EXT",          # 18
+    "MANUFACTURER_D_COUNTRY_CODE",          # 19
+    "MANUFACTURER_D_POSTAL_CODE",           # 20
+    "DEVICE_OPERATOR",                      # 21 - Who was using device
+    "EXPIRATION_DATE_OF_DEVICE",            # 22 - Date
+    "MODEL_NUMBER",                         # 23
+    "CATALOG_NUMBER",                       # 24
+    "LOT_NUMBER",                           # 25
+    "OTHER_ID_NUMBER",                      # 26
+    "DEVICE_AVAILABILITY",                  # 27 - For evaluation status
+    "DATE_RETURNED_TO_MANUFACTURER",        # 28 - Date
+    "DEVICE_REPORT_PRODUCT_CODE",           # 29 - FDA product classification code
+    "DEVICE_AGE_TEXT",                      # 30 - Age/use duration text
+    "DEVICE_EVALUATED_BY_MANUFACTUR",       # 31 - Note: truncated in FDA
+    "COMBINATION_PRODUCT_FLAG",             # 32 - NEW in 2020
+    "UDI_DI",                               # 33 - NEW in 2020: Unique Device Identifier - Device ID
+    "UDI_PUBLIC",                           # 34 - NEW in 2020: Unique Device Identifier - Public
+]
+
+# Default to 28-column format for backward compatibility
+DEVICE_COLUMNS_FDA = DEVICE_COLUMNS_FDA_28
 
 # =============================================================================
 # FDA PATIENT FILE COLUMNS (10 columns)
@@ -445,9 +492,10 @@ EXPECTED_COLUMN_COUNTS: Dict[str, int] = {
 }
 
 # Alternative column counts for historical files
+# Device: 28 (pre-2020 foidev*.txt) or 34 (2020+ device*.txt with UDI fields)
 ALTERNATIVE_COLUMN_COUNTS: Dict[str, List[int]] = {
     "master": [84, 86],  # Historical vs current
-    "device": [28],
+    "device": [28, 34],  # Pre-2020 (28 cols) vs 2020+ extended format (34 cols)
     "patient": [10],
     "text": [6],
     "problem": [2],
@@ -567,7 +615,7 @@ def get_fda_columns(file_type: str, column_count: int = None) -> List[str]:
 
     Args:
         file_type: One of 'master', 'device', 'patient', 'text', 'problem'
-        column_count: Optional specific column count (for master files)
+        column_count: Optional specific column count (for schema evolution handling)
 
     Returns:
         List of FDA column names
@@ -575,12 +623,19 @@ def get_fda_columns(file_type: str, column_count: int = None) -> List[str]:
     if file_type not in FDA_FILE_COLUMNS:
         raise ValueError(f"Unknown file type: {file_type}")
 
-    # Handle master file with variable column counts
+    # Handle master file with variable column counts (84 vs 86 columns)
     if file_type == "master" and column_count:
         if column_count == 84:
             return MASTER_COLUMNS_FDA_84.copy()
         elif column_count == 86:
             return MASTER_COLUMNS_FDA_86.copy()
+
+    # Handle device file with variable column counts (28 vs 34 columns)
+    if file_type == "device" and column_count:
+        if column_count >= 34:
+            return DEVICE_COLUMNS_FDA_34.copy()
+        elif column_count >= 28:
+            return DEVICE_COLUMNS_FDA_28.copy()
 
     return FDA_FILE_COLUMNS[file_type].copy()
 
@@ -629,7 +684,9 @@ def get_columns_for_count(file_type: str, column_count: int) -> List[str]:
     """
     Get the appropriate column list based on detected column count.
 
-    This handles schema evolution (e.g., master files with 84 vs 86 columns).
+    This handles schema evolution:
+    - Master files: 84 columns (thru 2023) vs 86 columns (2024+)
+    - Device files: 28 columns (pre-2020) vs 34 columns (2020+)
 
     Args:
         file_type: Type of MAUDE file
@@ -646,5 +703,14 @@ def get_columns_for_count(file_type: str, column_count: int) -> List[str]:
         else:
             # Default to current format
             return MASTER_COLUMNS_FDA_86.copy()
+
+    if file_type == "device":
+        if column_count >= 34:
+            return DEVICE_COLUMNS_FDA_34.copy()
+        elif column_count >= 28:
+            return DEVICE_COLUMNS_FDA_28.copy()
+        else:
+            # Default to standard format
+            return DEVICE_COLUMNS_FDA_28.copy()
 
     return get_fda_columns(file_type)

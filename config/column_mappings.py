@@ -153,11 +153,19 @@ MASTER_COLUMN_MAPPING: Dict[str, str] = {
 # =============================================================================
 
 DEVICE_COLUMN_MAPPING: Dict[str, str] = {
+    # Core columns (all device file versions)
     "MDR_REPORT_KEY": "mdr_report_key",
     "DEVICE_EVENT_KEY": "device_event_key",
     "IMPLANT_FLAG": "implant_flag",
     "DATE_REMOVED_FLAG": "date_removed_flag",
     "DEVICE_SEQUENCE_NO": "device_sequence_number",  # FDA: NO, DB: NUMBER
+
+    # New columns added in 2020+ format (positions 6-8 in 34-col files)
+    "IMPLANT_DATE_YEAR": "implant_date_year",
+    "DATE_REMOVED_YEAR": "date_removed_year",
+    "SERVICED_BY_3RD_PARTY_FLAG": "serviced_by_3rd_party_flag",
+
+    # Core columns (continue from both formats)
     "DATE_RECEIVED": "date_received",
     "BRAND_NAME": "brand_name",
     "GENERIC_NAME": "generic_name",
@@ -181,6 +189,13 @@ DEVICE_COLUMN_MAPPING: Dict[str, str] = {
     "DEVICE_REPORT_PRODUCT_CODE": "device_report_product_code",
     "DEVICE_AGE_TEXT": "device_age_text",
     "DEVICE_EVALUATED_BY_MANUFACTUR": "device_evaluated_by_manufacturer",  # FDA truncated
+
+    # New columns at end in 2020+ format (positions 32-34 in 34-col files)
+    "COMBINATION_PRODUCT_FLAG": "combination_product_flag",
+    "UDI_DI": "udi_di",      # Unique Device Identifier - Device ID
+    "UDI-DI": "udi_di",      # Handle hyphenated version from some files
+    "UDI_PUBLIC": "udi_public",  # Unique Device Identifier - Public
+    "UDI-PUBLIC": "udi_public",  # Handle hyphenated version from some files
 }
 
 # =============================================================================

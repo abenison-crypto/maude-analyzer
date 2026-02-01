@@ -1,0 +1,332 @@
+# FDA MAUDE File Specification Manifest
+# Official FDA column specifications, types, valid values, and schema versions
+# Source: FDA MAUDE Database Documentation
+# Last Updated: 2025-01-31
+
+schema_version: "1.0"
+
+# =============================================================================
+# FILE TYPE SPECIFICATIONS
+# =============================================================================
+
+file_types:
+  master:
+    description: "Medical Device Report (MDR) master file"
+    filename_patterns:
+      - "mdrfoi*.txt"
+      - "mdrfoithru*.txt"
+      - "mdrfoiAdd*.txt"
+      - "mdrfoiChange*.txt"
+    delimiter: "|"
+    has_header: true
+    encoding: "latin-1"
+
+    schema_versions:
+      - version: "86-col"
+        effective_date: "2024-01-01"
+        column_count: 86
+        description: "Current format with MFR_REPORT_TYPE and REPORTER_STATE_CODE"
+
+      - version: "84-col"
+        effective_date: "1998-01-01"
+        end_date: "2023-12-31"
+        column_count: 84
+        description: "Historical format without MFR_REPORT_TYPE and REPORTER_STATE_CODE"
+
+  device:
+    description: "Device information linked to MDR events"
+    filename_patterns:
+      - "foidev*.txt"
+      - "foidevthru*.txt"
+      - "device*.txt"
+    delimiter: "|"
+    has_header: true
+    encoding: "latin-1"
+
+    schema_versions:
+      - version: "34-col"
+        effective_date: "2020-01-01"
+        column_count: 34
+        description: "Extended format with UDI fields"
+        new_columns:
+          - IMPLANT_DATE_YEAR
+          - DATE_REMOVED_YEAR
+          - SERVICED_BY_3RD_PARTY_FLAG
+          - COMBINATION_PRODUCT_FLAG
+          - UDI_DI
+          - UDI_PUBLIC
+
+      - version: "28-col"
+        effective_date: "1998-01-01"
+        end_date: "2019-12-31"
+        column_count: 28
+        description: "Standard format without UDI fields"
+
+  patient:
+    description: "Patient demographics and outcomes"
+    filename_patterns:
+      - "patient*.txt"
+      - "patientthru*.txt"
+    delimiter: "|"
+    has_header: true
+    encoding: "latin-1"
+    column_count: 10
+
+  text:
+    description: "Narrative text descriptions"
+    filename_patterns:
+      - "foitext*.txt"
+      - "foitextthru*.txt"
+    delimiter: "|"
+    has_header: true
+    encoding: "latin-1"
+    column_count: 6
+
+  problem:
+    description: "Device problem codes"
+    filename_patterns:
+      - "foidevproblem*.txt"
+    delimiter: "|"
+    has_header: false
+    encoding: "latin-1"
+    column_count: 2
+
+  patient_problem:
+    description: "Patient problem codes"
+    filename_patterns:
+      - "patientproblemcode*.txt"
+    delimiter: "|"
+    has_header: true
+    encoding: "latin-1"
+    column_count: 5
+
+# =============================================================================
+# COLUMN SPECIFICATIONS
+# =============================================================================
+
+columns:
+  master:
+    MDR_REPORT_KEY:
+      type: VARCHAR
+      nullable: false
+      primary_key: true
+      description: "Unique identifier for the MDR report"
+
+    EVENT_KEY:
+      type: VARCHAR
+      description: "Event identifier"
+
+    REPORT_NUMBER:
+      type: VARCHAR
+      description: "Report number assigned by FDA"
+
+    DATE_RECEIVED:
+      type: DATE
+      format: "YYYY-MM-DD"
+      valid_range: ["1984-01-01", "current"]
+      description: "Date FDA received the report"
+
+    DATE_OF_EVENT:
+      type: DATE
+      format: "YYYY-MM-DD"
+      description: "Date the event occurred"
+      constraint: "Should be <= DATE_RECEIVED"
+
+    ADVERSE_EVENT_FLAG:
+      type: VARCHAR
+      valid_values: ["Y", "N", ""]
+      description: "Indicates adverse event"
+
+    PRODUCT_PROBLEM_FLAG:
+      type: VARCHAR
+      valid_values: ["Y", "N", ""]
+      description: "Indicates product problem"
+
+    EVENT_TYPE:
+      type: VARCHAR
+      valid_values: ["D", "IN", "M", "O", "*"]
+      description: "D=Death, IN=Injury, M=Malfunction, O=Other, *=Unknown"
+
+    HEALTH_PROFESSIONAL:
+      type: VARCHAR
+      valid_values: ["Y", "N", ""]
+      description: "Reporter is health professional"
+
+    SINGLE_USE_FLAG:
+      type: VARCHAR
+      valid_values: ["Y", "N", ""]
+      description: "Single use device"
+
+    NUMBER_DEVICES_IN_EVENT:
+      type: INTEGER
+      valid_range: [0, 9999]
+      description: "Count of devices involved"
+
+    NUMBER_PATIENTS_IN_EVENT:
+      type: INTEGER
+      valid_range: [0, 9999]
+      description: "Count of patients involved"
+
+  device:
+    MDR_REPORT_KEY:
+      type: VARCHAR
+      nullable: false
+      foreign_key: "master_events.mdr_report_key"
+      description: "Link to master event"
+
+    DEVICE_SEQUENCE_NO:
+      type: INTEGER
+      valid_range: [1, 99]
+      description: "Device sequence within event"
+
+    IMPLANT_FLAG:
+      type: VARCHAR
+      valid_values: ["Y", "N", ""]
+      description: "Device is implanted"
+
+    DATE_REMOVED_FLAG:
+      type: VARCHAR
+      valid_values: ["Y", "N", ""]
+      description: "Device was removed"
+
+    DEVICE_REPORT_PRODUCT_CODE:
+      type: VARCHAR
+      max_length: 3
+      description: "FDA product classification code"
+
+    # 2020+ New Fields
+    IMPLANT_DATE_YEAR:
+      type: VARCHAR
+      schema_version: "34-col"
+      description: "Year device was implanted"
+
+    DATE_REMOVED_YEAR:
+      type: VARCHAR
+      schema_version: "34-col"
+      description: "Year device was removed"
+
+    SERVICED_BY_3RD_PARTY_FLAG:
+      type: VARCHAR
+      valid_values: ["Y", "N", ""]
+      schema_version: "34-col"
+      description: "Serviced by third party"
+
+    COMBINATION_PRODUCT_FLAG:
+      type: VARCHAR
+      valid_values: ["Y", "N", ""]
+      schema_version: "34-col"
+      description: "Is a combination product"
+
+    UDI_DI:
+      type: VARCHAR
+      schema_version: "34-col"
+      description: "Unique Device Identifier - Device ID"
+
+    UDI_PUBLIC:
+      type: VARCHAR
+      schema_version: "34-col"
+      description: "Unique Device Identifier - Public"
+
+  patient:
+    MDR_REPORT_KEY:
+      type: VARCHAR
+      nullable: false
+      foreign_key: "master_events.mdr_report_key"
+      description: "Link to master event"
+
+    PATIENT_SEQUENCE_NUMBER:
+      type: INTEGER
+      valid_range: [1, 99]
+      description: "Patient sequence within event"
+
+    PATIENT_SEX:
+      type: VARCHAR
+      valid_values: ["M", "F", "U", "Male", "Female", "Unknown", ""]
+      description: "Patient sex"
+
+    PATIENT_AGE:
+      type: VARCHAR
+      description: "Patient age (may include unit)"
+
+  text:
+    MDR_REPORT_KEY:
+      type: VARCHAR
+      nullable: false
+      foreign_key: "master_events.mdr_report_key"
+      description: "Link to master event"
+
+    MDR_TEXT_KEY:
+      type: VARCHAR
+      description: "Unique text record identifier"
+
+    TEXT_TYPE_CODE:
+      type: VARCHAR
+      valid_values: ["D", "E", "N", "H", "A", "B", "C", "F", "R", "H1", "H2", "H3", "H4", "H5", "H6", "UF", ""]
+      description: "Type of narrative text"
+
+    FOI_TEXT:
+      type: TEXT
+      description: "Narrative text content"
+
+# =============================================================================
+# DATA QUALITY THRESHOLDS
+# =============================================================================
+
+quality_thresholds:
+  # Orphan rate thresholds (child records without matching master)
+  orphan_rate:
+    warning: 0.05  # 5%
+    critical: 0.20  # 20%
+
+  # Coverage thresholds
+  manufacturer_coverage:
+    target: 0.95  # 95%
+    minimum: 0.90  # 90%
+
+  product_code_coverage:
+    target: 0.95
+    minimum: 0.90
+
+  # Parse success thresholds
+  date_parse_success:
+    minimum: 0.99  # 99%
+
+  # Record count variance between source and loaded
+  record_count_variance:
+    maximum: 0.001  # 0.1%
+
+  # Duplicate key rate (should be 0)
+  duplicate_key_rate:
+    maximum: 0.0
+
+  # Data freshness (days since last update)
+  data_freshness:
+    warning: 7
+    critical: 14
+
+# =============================================================================
+# HISTORICAL FILE PATTERNS
+# =============================================================================
+
+historical_files:
+  master:
+    - pattern: "mdrfoithru{year}.txt"
+      years: [1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023]
+      schema_version: "84-col"
+
+    - pattern: "mdrfoi{year}.txt"
+      years: [2024, 2025]
+      schema_version: "86-col"
+
+  device:
+    - pattern: "foidevthru{year}.txt"
+      years: [1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019]
+      schema_version: "28-col"
+
+    - pattern: "foidev{year}.txt"
+      years: [2019]
+      schema_version: "28-col"
+
+    - pattern: "device{year}.txt"
+      years: [2020, 2021, 2022, 2023, 2024, 2025]
+      schema_version: "34-col"

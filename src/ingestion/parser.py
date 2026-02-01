@@ -294,6 +294,9 @@ class ParseResult:
     error_rows: int = 0
     errors: List[Tuple[int, str]] = field(default_factory=list)
     schema_info: Optional[SchemaInfo] = None
+    # Column mismatch tracking for data quality auditing
+    column_mismatch_count: int = 0
+    column_mismatch_samples: List[Tuple[int, int, int]] = field(default_factory=list)  # (line_num, expected, actual)
 
 
 class MAUDEParser:
@@ -585,7 +588,8 @@ class MAUDEParser:
                     try:
                         # Parse row using detected columns
                         record = self._parse_row_dynamic(
-                            row, schema.columns, file_type
+                            row, schema.columns, file_type,
+                            line_num=line_num, result=result
                         )
 
                         # Apply product code filter
@@ -614,15 +618,19 @@ class MAUDEParser:
             logger.error(f"Error reading file {filepath}: {e}")
             raise
 
-        logger.info(
-            f"Parsed {filepath.name}: {result.parsed_rows} records, "
-            f"{result.error_rows} errors"
-        )
+        # Log parsing results including column mismatch stats
+        log_msg = f"Parsed {filepath.name}: {result.parsed_rows} records, {result.error_rows} errors"
+        if result.column_mismatch_count > 0:
+            log_msg += f", {result.column_mismatch_count} column mismatches"
+            logger.warning(log_msg)
+        else:
+            logger.info(log_msg)
 
         return result
 
     def _parse_row_dynamic(
-        self, row: List[str], columns: List[str], file_type: str
+        self, row: List[str], columns: List[str], file_type: str,
+        line_num: int = 0, result: Optional[ParseResult] = None
     ) -> Dict[str, Any]:
         """
         Parse a single row into a dictionary using dynamic columns.
@@ -631,11 +639,32 @@ class MAUDEParser:
             row: List of field values.
             columns: List of column names (FDA format, uppercase).
             file_type: Type of file being parsed.
+            line_num: Line number in the source file (for logging).
+            result: Optional ParseResult to track column mismatches.
 
         Returns:
             Dictionary with FDA column names as keys.
         """
         record = {}
+        expected_count = len(columns)
+        actual_count = len(row)
+
+        # Track column mismatches for data quality auditing
+        if actual_count != expected_count and result is not None:
+            result.column_mismatch_count += 1
+            # Store samples (up to 100) for debugging
+            if len(result.column_mismatch_samples) < 100:
+                result.column_mismatch_samples.append((line_num, expected_count, actual_count))
+            # Log warning for first few mismatches
+            if result.column_mismatch_count <= 5:
+                logger.warning(
+                    f"Column count mismatch in {file_type} file at line {line_num}: "
+                    f"expected {expected_count}, got {actual_count}"
+                )
+            elif result.column_mismatch_count == 6:
+                logger.warning(
+                    f"Additional column mismatches in {file_type} file (suppressing further warnings)"
+                )
 
         # Handle rows with fewer or more columns than expected
         for i, col_name in enumerate(columns):

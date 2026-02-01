@@ -195,6 +195,11 @@ CREATE TABLE IF NOT EXISTS master_events (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     source_file VARCHAR,
 
+    -- Record version tracking (for historical/incremental reconciliation)
+    record_version INTEGER DEFAULT 1,
+    first_seen_file VARCHAR,
+    last_updated_file VARCHAR,
+
     -- CHECK constraints for data validation
     CONSTRAINT chk_master_adverse_flag CHECK (adverse_event_flag IS NULL OR adverse_event_flag IN ('Y', 'N', '')),
     CONSTRAINT chk_master_product_flag CHECK (product_problem_flag IS NULL OR product_problem_flag IN ('Y', 'N', '')),
@@ -723,6 +728,74 @@ CREATE TABLE IF NOT EXISTS data_freshness (
 """
 
 # =============================================================================
+# FILE AUDIT TABLE (for data completeness tracking)
+# =============================================================================
+
+CREATE_FILE_AUDIT = """
+CREATE TABLE IF NOT EXISTS file_audit (
+    filename VARCHAR PRIMARY KEY,
+    file_type VARCHAR NOT NULL,
+    file_size_bytes BIGINT,
+    file_checksum VARCHAR,
+    source_record_count BIGINT,
+    loaded_record_count BIGINT,
+    skipped_record_count BIGINT DEFAULT 0,
+    error_record_count BIGINT DEFAULT 0,
+    column_mismatch_count BIGINT DEFAULT 0,
+    checksum_match BOOLEAN,
+    load_status VARCHAR,  -- 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED', 'PARTIAL'
+    schema_version VARCHAR,
+    detected_column_count INTEGER,
+    expected_column_count INTEGER,
+    download_started TIMESTAMP,
+    download_completed TIMESTAMP,
+    load_started TIMESTAMP,
+    load_completed TIMESTAMP,
+    last_verified TIMESTAMP,
+    error_message TEXT,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- CHECK constraints
+    CONSTRAINT chk_file_audit_status CHECK (
+        load_status IS NULL OR load_status IN ('PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED', 'PARTIAL')
+    ),
+    CONSTRAINT chk_file_audit_counts CHECK (
+        (source_record_count IS NULL OR source_record_count >= 0) AND
+        (loaded_record_count IS NULL OR loaded_record_count >= 0) AND
+        (skipped_record_count IS NULL OR skipped_record_count >= 0) AND
+        (error_record_count IS NULL OR error_record_count >= 0)
+    )
+)
+"""
+
+# =============================================================================
+# QUALITY METRICS HISTORY TABLE (for regulatory reporting)
+# =============================================================================
+
+CREATE_QUALITY_METRICS_HISTORY = """
+CREATE TABLE IF NOT EXISTS quality_metrics_history (
+    metric_date DATE NOT NULL,
+    metric_name VARCHAR NOT NULL,
+    metric_value DECIMAL,
+    threshold DECIMAL,
+    status VARCHAR,  -- 'PASS', 'WARNING', 'FAIL'
+    file_type VARCHAR,  -- Optional: specific file type this metric applies to
+    details JSON,  -- Additional metric details
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (metric_date, metric_name),
+
+    -- CHECK constraints
+    CONSTRAINT chk_qm_status CHECK (
+        status IS NULL OR status IN ('PASS', 'WARNING', 'FAIL')
+    )
+)
+"""
+
+# =============================================================================
 # AGGREGATE TABLES
 # =============================================================================
 
@@ -806,6 +879,16 @@ CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_den_date_received ON den_reports(date_received)",
     "CREATE INDEX IF NOT EXISTS idx_den_manufacturer ON den_reports(manufacturer_name)",
     "CREATE INDEX IF NOT EXISTS idx_den_year ON den_reports(report_year)",
+
+    # File audit indexes
+    "CREATE INDEX IF NOT EXISTS idx_file_audit_type ON file_audit(file_type)",
+    "CREATE INDEX IF NOT EXISTS idx_file_audit_status ON file_audit(load_status)",
+    "CREATE INDEX IF NOT EXISTS idx_file_audit_load_completed ON file_audit(load_completed)",
+
+    # Quality metrics indexes
+    "CREATE INDEX IF NOT EXISTS idx_quality_metrics_date ON quality_metrics_history(metric_date)",
+    "CREATE INDEX IF NOT EXISTS idx_quality_metrics_name ON quality_metrics_history(metric_name)",
+    "CREATE INDEX IF NOT EXISTS idx_quality_metrics_status ON quality_metrics_history(status)",
 ]
 
 
@@ -855,6 +938,9 @@ def create_all_tables(conn: duckdb.DuckDBPyConnection) -> None:
         ("download_state", CREATE_DOWNLOAD_STATE),
         ("data_freshness", CREATE_DATA_FRESHNESS),
         ("daily_aggregates", CREATE_DAILY_AGGREGATES),
+        # Audit and quality tracking tables
+        ("file_audit", CREATE_FILE_AUDIT),
+        ("quality_metrics_history", CREATE_QUALITY_METRICS_HISTORY),
     ]
 
     for table_name, create_sql in tables:

@@ -1,0 +1,193 @@
+# FDA MAUDE File Load Order Configuration
+# Defines explicit processing order for data integrity
+#
+# IMPORTANT: Order matters for referential integrity:
+# 1. Master events must be loaded FIRST (they are the parent table)
+# 2. Device files loaded SECOND (for product code filtering)
+# 3. Other child tables can then be loaded in any order
+# 4. Add files before Change files (changes may reference adds)
+
+schema_version: "1.0"
+
+# =============================================================================
+# LOAD ORDER PRIORITY
+# =============================================================================
+
+# Priority 1: Load order by file type
+# Lower number = load first
+file_type_priority:
+  master: 1      # Master events are the parent table
+  device: 2      # Devices have product codes for filtering
+  patient: 3     # Child table linked by mdr_report_key
+  text: 4        # Child table linked by mdr_report_key
+  problem: 5     # Child table linked by mdr_report_key
+  patient_problem: 6
+  asr: 7         # Alternative Summary Reports (standalone)
+  asr_ppc: 8     # ASR patient problems
+  den: 9         # Legacy DEN data
+
+# Priority 2: Load order by file category within each type
+# For each file type, files are loaded in this order
+file_category_priority:
+  historical: 1  # thru{year} files - load first (baseline data)
+  annual: 2      # {year} files - load next (yearly archives)
+  current: 3     # Current weekly files (most recent baseline)
+  add: 4         # Add files - new records
+  change: 5      # Change files - updates to existing records
+
+# =============================================================================
+# FILE PATTERNS BY CATEGORY
+# =============================================================================
+
+file_patterns:
+  master:
+    historical:
+      - "mdrfoithru*.txt"
+    annual:
+      - "mdrfoi{2024,2025}.txt"  # 86-column format
+    current:
+      - "mdrfoi.txt"
+    add:
+      - "mdrfoiAdd*.txt"
+    change:
+      - "mdrfoiChange*.txt"
+
+  device:
+    historical:
+      - "foidevthru*.txt"
+    annual:
+      - "foidev{1998,1999,2000,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019}.txt"
+      - "device{2020,2021,2022,2023,2024,2025}.txt"  # 34-column format
+    current:
+      - "foidev.txt"
+    add:
+      - "foidevAdd*.txt"
+      - "deviceAdd*.txt"
+    change:
+      - "foidevChange*.txt"
+      - "deviceChange*.txt"
+
+  patient:
+    historical:
+      - "patientthru*.txt"
+    annual:
+      - "patient{year}.txt"
+    current:
+      - "patient.txt"
+    add:
+      - "patientAdd*.txt"
+    change:
+      - "patientChange*.txt"
+
+  text:
+    historical:
+      - "foitextthru*.txt"
+    annual:
+      - "foitext{year}.txt"
+    current:
+      - "foitext.txt"
+    add:
+      - "foitextAdd*.txt"
+    change:
+      - "foitextChange*.txt"
+
+  problem:
+    current:
+      - "foidevproblem.txt"
+
+  patient_problem:
+    current:
+      - "patientproblemcode.txt"
+
+# =============================================================================
+# LOAD CONSTRAINTS
+# =============================================================================
+
+constraints:
+  # Master must be loaded before any child tables
+  dependencies:
+    device: ["master"]
+    patient: ["master"]
+    text: ["master"]
+    problem: ["master"]
+    patient_problem: ["master"]
+
+  # Within a file type, Change files require corresponding base files
+  change_requires_base:
+    mdrfoiChange: ["mdrfoi", "mdrfoiAdd"]
+    foidevChange: ["foidev", "foidevAdd"]
+    deviceChange: ["device", "deviceAdd"]
+    patientChange: ["patient", "patientAdd"]
+    foitextChange: ["foitext", "foitextAdd"]
+
+  # Year constraints - don't load Add/Change files for years not yet loaded
+  year_dependent_loads:
+    enabled: true
+    require_historical_first: true
+
+# =============================================================================
+# BATCH PROCESSING CONFIGURATION
+# =============================================================================
+
+batch_processing:
+  # Batch size for database inserts
+  batch_size: 10000
+
+  # Checkpoint frequency (save state after N files)
+  checkpoint_frequency: 5
+
+  # Enable/disable parallel processing of independent file types
+  parallel_child_tables: false  # Safer to process sequentially
+
+  # Transaction mode
+  transaction_mode: "per_file"  # Options: per_file, per_batch, full_load
+
+# =============================================================================
+# INCREMENTAL UPDATE SETTINGS
+# =============================================================================
+
+incremental:
+  # Order for weekly updates
+  weekly_order:
+    - "master:add"
+    - "master:change"
+    - "device:add"
+    - "device:change"
+    - "patient:add"
+    - "patient:change"
+    - "text:add"
+    - "text:change"
+    - "problem:current"
+    - "patient_problem:current"
+
+  # Files to skip during incremental (already processed)
+  skip_patterns:
+    - "*thru*.txt"  # Historical files only loaded during initial load
+
+# =============================================================================
+# VALIDATION CHECKPOINTS
+# =============================================================================
+
+validation_checkpoints:
+  # Run validation after loading each file type
+  after_file_type:
+    master:
+      - check_record_count
+      - check_date_coverage
+    device:
+      - check_record_count
+      - check_orphan_rate
+      - check_product_code_coverage
+    patient:
+      - check_record_count
+      - check_orphan_rate
+    text:
+      - check_record_count
+      - check_orphan_rate
+
+  # Run validation after completing full load
+  after_full_load:
+    - validate_relationships
+    - check_manufacturer_coverage
+    - check_data_freshness
+    - quality_gate

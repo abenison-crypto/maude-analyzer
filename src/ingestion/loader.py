@@ -18,6 +18,7 @@ from config.logging_config import get_logger
 from src.database import get_connection, initialize_database
 from src.ingestion.parser import MAUDEParser, FILE_COLUMNS, SchemaInfo
 from src.ingestion.transformer import DataTransformer, transform_record
+from src.ingestion.validation_framework import ValidationPipeline, StageValidationResult
 
 logger = get_logger("loader")
 
@@ -65,6 +66,18 @@ class LoadResult:
     duration_seconds: float = 0
     error_messages: List[str] = field(default_factory=list)
     schema_info: Optional[SchemaInfo] = None
+    # File audit tracking
+    source_record_count: Optional[int] = None  # Count from source file
+    record_count_variance_pct: Optional[float] = None  # Difference between source and loaded
+    column_mismatch_count: int = 0
+    checksum: Optional[str] = None
+    transaction_committed: bool = False
+    # Three-stage validation results
+    stage1_validation: Optional[StageValidationResult] = None
+    stage2_validation_errors: int = 0
+    stage2_validation_warnings: int = 0
+    stage3_validation: Optional[StageValidationResult] = None
+    duplicates_removed: int = 0
 
 
 # Expanded column lists for database insertion
@@ -241,6 +254,18 @@ INSERT_COLUMNS = {
 }
 
 
+# Unique constraint key columns for duplicate detection
+# These define the natural keys that should be unique within each table
+UNIQUE_CONSTRAINT_KEYS = {
+    "master": ["mdr_report_key"],
+    "device": ["mdr_report_key", "device_sequence_number"],
+    "patient": ["mdr_report_key", "patient_sequence_number"],
+    "text": ["mdr_report_key", "mdr_text_key"],
+    "problem": ["mdr_report_key", "problem_code"],
+    "patient_problem": ["mdr_report_key", "problem_code"],
+}
+
+
 class MAUDELoader:
     """Load MAUDE data into DuckDB database with dynamic schema support."""
 
@@ -249,6 +274,10 @@ class MAUDELoader:
         db_path: Optional[Path] = None,
         batch_size: int = 10000,
         filter_product_codes: Optional[List[str]] = None,
+        enable_transaction_safety: bool = True,
+        variance_threshold_pct: float = 0.1,
+        detect_duplicates: bool = True,
+        enable_validation: bool = True,
     ):
         """
         Initialize the loader.
@@ -259,15 +288,179 @@ class MAUDELoader:
             filter_product_codes: Product codes to filter by.
                 - None (default): no filtering (load all products)
                 - List[str]: filter by specified codes
+            enable_transaction_safety: Use explicit transactions with rollback on failure.
+            variance_threshold_pct: Max acceptable variance between source and loaded counts.
+            detect_duplicates: Check for duplicate keys within batches before insert.
+            enable_validation: Enable three-stage validation pipeline.
         """
         self.db_path = db_path or config.database.path
         self.batch_size = batch_size
         self.filter_product_codes = filter_product_codes
+        self.enable_transaction_safety = enable_transaction_safety
+        self.variance_threshold_pct = variance_threshold_pct
+        self.detect_duplicates = detect_duplicates
+        self.enable_validation = enable_validation
         self.parser = MAUDEParser()
         self.transformer = DataTransformer()
 
         # Track MDR keys for filtering related tables
         self._loaded_mdr_keys = set()
+
+        # Track duplicate key violations per file
+        self._duplicate_count = 0
+        self._duplicate_samples: List[Dict[str, Any]] = []
+
+        # Initialize validation pipeline
+        self._validation_pipeline = ValidationPipeline(db_path=self.db_path) if enable_validation else None
+        self._stage2_errors = 0
+        self._stage2_warnings = 0
+
+    def _count_source_records(self, filepath: Path) -> int:
+        """
+        Count records in source file without full parsing.
+
+        Args:
+            filepath: Path to the source file.
+
+        Returns:
+            Number of data records (excluding header).
+        """
+        return self.parser.count_records(filepath)
+
+    def _update_file_audit(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        result: LoadResult,
+        load_started: datetime,
+        status: str = "COMPLETED"
+    ) -> None:
+        """
+        Update file audit table with load results.
+
+        Args:
+            conn: Database connection.
+            result: LoadResult with load statistics.
+            load_started: When the load started.
+            status: Load status (PENDING, IN_PROGRESS, COMPLETED, FAILED, PARTIAL).
+        """
+        try:
+            # Calculate variance
+            variance_pct = None
+            if result.source_record_count and result.source_record_count > 0:
+                variance_pct = abs(
+                    result.source_record_count - result.records_loaded
+                ) / result.source_record_count * 100
+
+            # Check if file_audit table exists
+            try:
+                conn.execute("SELECT 1 FROM file_audit LIMIT 1")
+            except Exception:
+                # Table doesn't exist yet, skip audit
+                return
+
+            # Insert or update file audit record
+            conn.execute("""
+                INSERT INTO file_audit (
+                    filename, file_type, source_record_count, loaded_record_count,
+                    skipped_record_count, error_record_count, column_mismatch_count,
+                    load_status, schema_version, detected_column_count,
+                    load_started, load_completed, error_message, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (filename) DO UPDATE SET
+                    source_record_count = EXCLUDED.source_record_count,
+                    loaded_record_count = EXCLUDED.loaded_record_count,
+                    skipped_record_count = EXCLUDED.skipped_record_count,
+                    error_record_count = EXCLUDED.error_record_count,
+                    column_mismatch_count = EXCLUDED.column_mismatch_count,
+                    load_status = EXCLUDED.load_status,
+                    load_completed = EXCLUDED.load_completed,
+                    error_message = EXCLUDED.error_message,
+                    updated_at = CURRENT_TIMESTAMP
+            """, [
+                result.filename,
+                result.file_type,
+                result.source_record_count,
+                result.records_loaded,
+                result.records_skipped,
+                result.records_errors,
+                result.column_mismatch_count,
+                status,
+                result.schema_info.validation_message if result.schema_info else None,
+                result.schema_info.column_count if result.schema_info else None,
+                load_started,
+                datetime.now(),
+                "; ".join(result.error_messages[:5]) if result.error_messages else None,
+            ])
+
+            # Flag if variance exceeds threshold
+            if variance_pct and variance_pct > self.variance_threshold_pct:
+                logger.warning(
+                    f"Record count variance {variance_pct:.2f}% exceeds threshold "
+                    f"{self.variance_threshold_pct}% for {result.filename}"
+                )
+
+        except Exception as e:
+            logger.warning(f"Could not update file audit: {e}")
+
+    def _detect_batch_duplicates(
+        self,
+        batch: List[Dict[str, Any]],
+        file_type: str,
+    ) -> tuple[List[Dict[str, Any]], int]:
+        """
+        Detect and remove duplicate records within a batch based on unique constraint keys.
+
+        This catches duplicates that would otherwise cause issues during insert,
+        particularly for child tables where the same (mdr_report_key, sequence_number)
+        combination might appear multiple times in the same file.
+
+        Args:
+            batch: List of record dictionaries.
+            file_type: Type of records being loaded.
+
+        Returns:
+            Tuple of (deduplicated_batch, duplicate_count).
+        """
+        key_cols = UNIQUE_CONSTRAINT_KEYS.get(file_type)
+        if not key_cols:
+            return batch, 0
+
+        seen_keys: set = set()
+        deduplicated = []
+        duplicates = 0
+
+        for record in batch:
+            # Build composite key from key columns
+            key_values = []
+            for col in key_cols:
+                val = record.get(col)
+                # Normalize None values for consistent hashing
+                key_values.append(str(val) if val is not None else "")
+
+            key = tuple(key_values)
+
+            if key in seen_keys:
+                duplicates += 1
+                # Log sample duplicates (first 5)
+                if len(self._duplicate_samples) < 5:
+                    self._duplicate_samples.append({
+                        "file_type": file_type,
+                        "key_columns": key_cols,
+                        "key_values": key_values,
+                        "mdr_report_key": record.get("mdr_report_key"),
+                    })
+            else:
+                seen_keys.add(key)
+                deduplicated.append(record)
+
+        if duplicates > 0:
+            self._duplicate_count += duplicates
+            logger.debug(
+                f"Detected {duplicates} duplicate records in {file_type} batch "
+                f"(key: {key_cols})"
+            )
+
+        return deduplicated, duplicates
 
     def load_file(
         self,
@@ -278,6 +471,12 @@ class MAUDELoader:
         """
         Load a single MAUDE file into the database using dynamic schema detection.
 
+        Features:
+        - Pre-load source record counting for completeness tracking
+        - Transaction safety with rollback on failure
+        - Post-load record count verification
+        - File audit table updates
+
         Args:
             filepath: Path to the file.
             file_type: Type of file (auto-detected if None).
@@ -287,6 +486,13 @@ class MAUDELoader:
             LoadResult with statistics.
         """
         start_time = datetime.now()
+        load_started = datetime.now()
+
+        # Reset tracking for new file
+        self._duplicate_count = 0
+        self._duplicate_samples = []
+        self._stage2_errors = 0
+        self._stage2_warnings = 0
 
         if file_type is None:
             file_type = self.parser.detect_file_type(filepath)
@@ -302,6 +508,30 @@ class MAUDELoader:
             filename=filepath.name,
             schema_info=schema,
         )
+
+        # STAGE 1: Pre-Parse Validation
+        if self._validation_pipeline:
+            result.stage1_validation = self._validation_pipeline.validate_stage1_preparse(
+                filepath, file_type
+            )
+            if not result.stage1_validation.passed:
+                logger.warning(
+                    f"Stage 1 validation failed for {filepath.name}: "
+                    f"{result.stage1_validation.error_count} errors, "
+                    f"{result.stage1_validation.warning_count} warnings"
+                )
+                # Log first few issues
+                for issue in result.stage1_validation.issues[:3]:
+                    logger.warning(f"  [{issue.severity}] {issue.code}: {issue.message}")
+
+        # Pre-load: Count source records for completeness tracking
+        try:
+            result.source_record_count = self._count_source_records(filepath)
+            logger.info(
+                f"Source file {filepath.name} contains {result.source_record_count:,} records"
+            )
+        except Exception as e:
+            logger.warning(f"Could not count source records: {e}")
 
         logger.info(
             f"Loading {file_type} file: {filepath.name} "
@@ -327,7 +557,16 @@ class MAUDELoader:
         if own_connection:
             conn = duckdb.connect(str(self.db_path))
 
+        transaction_started = False
+        parse_result = None  # Track parse result for column mismatch stats
+
         try:
+            # Begin transaction for data integrity
+            if self.enable_transaction_safety:
+                conn.execute("BEGIN TRANSACTION")
+                transaction_started = True
+                logger.debug(f"Started transaction for {filepath.name}")
+
             batch = []
 
             # Choose appropriate parser based on file type
@@ -371,6 +610,14 @@ class MAUDELoader:
                         filepath.name,
                     )
 
+                    # STAGE 2: Post-Transform Validation
+                    if self._validation_pipeline:
+                        stage2_result = self._validation_pipeline.validate_stage2_post_transform(
+                            transformed, file_type
+                        )
+                        self._stage2_errors += stage2_result.error_count
+                        self._stage2_warnings += stage2_result.warning_count
+
                     # Apply product code filter for device files only
                     if should_filter_by_product:
                         product_code = transformed.get("device_report_product_code")
@@ -410,16 +657,92 @@ class MAUDELoader:
                 inserted = self._insert_batch(conn, file_type, batch)
                 result.records_loaded += inserted
 
+            # Commit transaction on success
+            if self.enable_transaction_safety and transaction_started:
+                conn.execute("COMMIT")
+                result.transaction_committed = True
+                logger.debug(f"Committed transaction for {filepath.name}")
+
+            # Calculate record count variance
+            if result.source_record_count and result.source_record_count > 0:
+                result.record_count_variance_pct = abs(
+                    result.source_record_count - result.records_loaded
+                ) / result.source_record_count * 100
+
+                if result.record_count_variance_pct > self.variance_threshold_pct:
+                    logger.warning(
+                        f"Record count variance {result.record_count_variance_pct:.2f}% "
+                        f"exceeds threshold for {filepath.name}: "
+                        f"source={result.source_record_count:,}, loaded={result.records_loaded:,}"
+                    )
+
+            # STAGE 3: Post-Load Validation
+            if self._validation_pipeline:
+                result.stage3_validation = self._validation_pipeline.validate_stage3_post_load(
+                    filename=filepath.name,
+                    file_type=file_type,
+                    expected_count=result.source_record_count or 0,
+                    loaded_count=result.records_loaded,
+                )
+                if not result.stage3_validation.passed:
+                    logger.warning(
+                        f"Stage 3 validation issues for {filepath.name}: "
+                        f"{result.stage3_validation.error_count} errors"
+                    )
+
+            # Capture stage 2 validation summary
+            result.stage2_validation_errors = self._stage2_errors
+            result.stage2_validation_warnings = self._stage2_warnings
+            result.duplicates_removed = self._duplicate_count
+
+            # Update file audit table
+            self._update_file_audit(conn, result, load_started, "COMPLETED")
+
+        except Exception as e:
+            # Rollback transaction on failure
+            if self.enable_transaction_safety and transaction_started:
+                try:
+                    conn.execute("ROLLBACK")
+                    logger.warning(f"Rolled back transaction for {filepath.name} due to error: {e}")
+                except Exception as rollback_error:
+                    logger.error(f"Failed to rollback transaction: {rollback_error}")
+
+            # Update file audit with failure status
+            self._update_file_audit(conn, result, load_started, "FAILED")
+            result.error_messages.append(f"Load failed: {e}")
+            raise
+
         finally:
             if own_connection:
                 conn.close()
 
         result.duration_seconds = (datetime.now() - start_time).total_seconds()
 
+        # Log duplicate detection summary
+        if self._duplicate_count > 0:
+            logger.warning(
+                f"Detected {self._duplicate_count:,} duplicate records in {filepath.name}"
+            )
+            for sample in self._duplicate_samples[:3]:
+                logger.warning(
+                    f"  Duplicate sample: {sample['key_columns']} = {sample['key_values']}"
+                )
+
+        # Build validation summary for log
+        validation_parts = []
+        if self._duplicate_count > 0:
+            validation_parts.append(f"{self._duplicate_count:,} duplicates removed")
+        if self._stage2_errors > 0 or self._stage2_warnings > 0:
+            validation_parts.append(
+                f"validation: {self._stage2_errors} errors, {self._stage2_warnings} warnings"
+            )
+
+        validation_str = f", {', '.join(validation_parts)}" if validation_parts else ""
+
         logger.info(
             f"Loaded {filepath.name}: {result.records_loaded:,} records "
-            f"({result.records_skipped:,} skipped, {result.records_errors:,} errors) "
-            f"in {result.duration_seconds:.1f}s"
+            f"({result.records_skipped:,} skipped, {result.records_errors:,} errors"
+            f"{validation_str}) in {result.duration_seconds:.1f}s"
         )
 
         return result
@@ -436,10 +759,14 @@ class MAUDELoader:
         Uses pandas DataFrame for efficient bulk loading into DuckDB.
 
         Deduplication Strategy:
-        - master_events: Uses INSERT OR REPLACE on mdr_report_key
-        - Child tables (devices, patients, mdr_text, device_problems):
-          DELETE existing records for MDR keys in batch, then INSERT.
-          This prevents duplicates when re-loading files.
+        1. Pre-insert: Detect and remove duplicates within the batch
+           - devices: (mdr_report_key, device_sequence_number)
+           - patients: (mdr_report_key, patient_sequence_number)
+           - mdr_text: (mdr_report_key, mdr_text_key)
+        2. master_events: Uses INSERT OR REPLACE on mdr_report_key
+        3. Child tables (devices, patients, mdr_text, device_problems):
+           DELETE existing records for MDR keys in batch, then INSERT.
+           This prevents duplicates when re-loading files.
 
         Args:
             conn: Database connection.
@@ -447,12 +774,22 @@ class MAUDELoader:
             batch: List of record dictionaries.
 
         Returns:
-            Number of records inserted.
+            Number of records inserted (after deduplication).
         """
         if not batch:
             return 0
 
         import pandas as pd
+
+        # Step 1: Detect and remove duplicates within batch
+        if self.detect_duplicates:
+            batch, duplicate_count = self._detect_batch_duplicates(batch, file_type)
+            if duplicate_count > 0:
+                logger.debug(
+                    f"Removed {duplicate_count} intra-batch duplicates for {file_type}"
+                )
+            if not batch:
+                return 0
 
         table_name = self._get_table_name(file_type)
         columns = self._get_insert_columns(file_type)
@@ -657,7 +994,8 @@ class MAUDELoader:
         return patterns.get(file_type, "*.txt")
 
     def _log_ingestion(
-        self, conn: duckdb.DuckDBPyConnection, result: LoadResult
+        self, conn: duckdb.DuckDBPyConnection, result: LoadResult,
+        parse_result: Optional['ParseResult'] = None
     ) -> None:
         """Log ingestion result to database."""
         try:
@@ -670,12 +1008,18 @@ class MAUDELoader:
             schema_info = None
             if result.schema_info:
                 import json
-                schema_info = json.dumps({
+                schema_data = {
                     "column_count": result.schema_info.column_count,
                     "has_header": result.schema_info.has_header,
                     "is_valid": result.schema_info.is_valid,
                     "validation_message": result.schema_info.validation_message,
-                })
+                }
+                # Add column mismatch info from parse result if available
+                if parse_result and hasattr(parse_result, 'column_mismatch_count'):
+                    schema_data["column_mismatch_count"] = parse_result.column_mismatch_count
+                    if parse_result.column_mismatch_samples:
+                        schema_data["column_mismatch_samples"] = parse_result.column_mismatch_samples[:10]
+                schema_info = json.dumps(schema_data)
 
             conn.execute(
                 """
