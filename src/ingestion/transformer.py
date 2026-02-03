@@ -147,17 +147,22 @@ class DataTransformer:
             )
 
         # Extract year/month from dates for indexing
+        # Only set year if it's within valid range for CHECK constraint (1980-2100)
         if transformed.get("date_of_event"):
             dt = transformed["date_of_event"]
             if isinstance(dt, (date, datetime)):
-                transformed["event_year"] = dt.year
-                transformed["event_month"] = dt.month
+                if 1980 <= dt.year <= 2100:
+                    transformed["event_year"] = dt.year
+                    transformed["event_month"] = dt.month
+                # Dates outside 1980-2100 are kept but year/month not indexed
 
         if transformed.get("date_received"):
             dt = transformed["date_received"]
             if isinstance(dt, (date, datetime)):
-                transformed["received_year"] = dt.year
-                transformed["received_month"] = dt.month
+                if 1980 <= dt.year <= 2100:
+                    transformed["received_year"] = dt.year
+                    transformed["received_month"] = dt.month
+                # Dates outside 1980-2100 are kept but year/month not indexed
 
         # Clean event type
         if transformed.get("event_type"):
@@ -196,10 +201,14 @@ class DataTransformer:
                 transformed[field] = self.parse_date(transformed[field])
 
         # Parse integer fields
+        # device_sequence_number must be > 0 per CHECK constraint
         if transformed.get("device_sequence_number"):
-            transformed["device_sequence_number"] = self.parse_int(
-                transformed["device_sequence_number"]
-            )
+            seq_num = self.parse_int(transformed["device_sequence_number"])
+            # Only keep valid sequence numbers (> 0), otherwise set to NULL
+            if seq_num is not None and seq_num > 0:
+                transformed["device_sequence_number"] = seq_num
+            else:
+                transformed["device_sequence_number"] = None
 
         # Normalize flag fields
         flag_fields = ["implant_flag", "date_removed_flag"]

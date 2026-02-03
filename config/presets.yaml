@@ -1,0 +1,239 @@
+# MAUDE Filter Presets Configuration
+# Pre-defined filter combinations for quick access
+#
+# IMPORTANT: The default is ALWAYS "all_products" (no filtering).
+# All other presets are optional selections users can choose.
+
+# =============================================================================
+# Filter Presets
+# =============================================================================
+presets:
+  # Default preset - show ALL data (no filtering)
+  all_products:
+    name: All Products
+    description: Show all products and manufacturers in the database
+    icon: database
+    filters:
+      product_codes: []
+      manufacturers: []
+      event_types: []
+      date_range: null
+    is_default: true
+    priority: 1  # Always shown first
+
+  # Death events only
+  deaths_only:
+    name: Death Events
+    description: Only reports with patient death outcomes
+    icon: alert-triangle
+    filters:
+      product_codes: []
+      manufacturers: []
+      event_types:
+        - D
+      date_range: null
+    is_default: false
+
+  # Recent events (last 12 months)
+  recent_events:
+    name: Recent (12 Months)
+    description: Events from the last 12 months
+    icon: clock
+    filters:
+      product_codes: []
+      manufacturers: []
+      event_types: []
+      date_range:
+        type: relative
+        value: 12
+        unit: months
+    is_default: false
+
+  # High severity events (death + injury)
+  high_severity:
+    name: High Severity
+    description: Death and serious injury events only
+    icon: alert-octagon
+    filters:
+      product_codes: []
+      manufacturers: []
+      event_types:
+        - D
+        - IN
+      date_range: null
+    is_default: false
+
+  # Spinal Cord Stimulators (optional preset)
+  spinal_cord_stimulators:
+    name: Spinal Cord Stimulators
+    description: SCS devices (optional filter - not default)
+    icon: activity
+    filters:
+      product_codes:
+        - GZB
+        - LGW
+        - PMP
+      manufacturers: []
+      event_types: []
+      date_range: null
+    is_default: false
+
+  # Cardiac devices (optional preset)
+  cardiac_devices:
+    name: Cardiac Devices
+    description: Pacemakers, ICDs, and cardiac leads
+    icon: heart
+    filters:
+      product_codes:
+        - DXY
+        - LWS
+        - NIK
+      manufacturers: []
+      event_types: []
+      date_range: null
+    is_default: false
+
+# =============================================================================
+# Product Code Groups (for preset selector, not defaults)
+# =============================================================================
+product_groups:
+  neurostimulators:
+    name: Neurostimulators
+    description: All neurostimulator device types
+    codes:
+      - GZB
+      - LGW
+      - PMP
+      - GZD
+      - GZE
+      - GZF
+
+  cardiac_implants:
+    name: Cardiac Implants
+    description: Pacemakers and ICDs
+    codes:
+      - DXY
+      - LWS
+      - NIK
+
+  orthopedic:
+    name: Orthopedic Devices
+    description: Hip, knee, and spine implants
+    codes: []  # Populate from product_codes lookup table
+
+# =============================================================================
+# Manufacturer Groups (for preset selector, not defaults)
+# =============================================================================
+manufacturer_groups:
+  # No default manufacturer filtering - all groups are optional
+  neuromodulation:
+    name: Neuromodulation Manufacturers
+    description: Companies in the neuromodulation space
+    manufacturers:
+      - Abbott
+      - Medtronic
+      - Boston Scientific
+      - Nevro
+      - Stimwave
+      - Nalu Medical
+      - Saluda Medical
+
+  cardiac:
+    name: Cardiac Device Manufacturers
+    description: Major cardiac device manufacturers
+    manufacturers:
+      - Medtronic
+      - Abbott
+      - Boston Scientific
+      - Biotronik
+
+# =============================================================================
+# Time Range Presets (for date picker quick select)
+# =============================================================================
+time_ranges:
+  all_time:
+    name: All Time
+    type: all
+    is_default: true  # Default is all time, no date filtering
+
+  last_30_days:
+    name: Last 30 Days
+    type: relative
+    value: 30
+    unit: days
+
+  last_90_days:
+    name: Last 90 Days
+    type: relative
+    value: 90
+    unit: days
+
+  last_6_months:
+    name: Last 6 Months
+    type: relative
+    value: 6
+    unit: months
+
+  last_12_months:
+    name: Last 12 Months
+    type: relative
+    value: 12
+    unit: months
+
+  last_3_years:
+    name: Last 3 Years
+    type: relative
+    value: 3
+    unit: years
+
+  last_5_years:
+    name: Last 5 Years
+    type: relative
+    value: 5
+    unit: years
+
+  ytd:
+    name: Year to Date
+    type: ytd
+
+# =============================================================================
+# Search Templates (for saved searches, not defaults)
+# =============================================================================
+search_templates:
+  signal_detection:
+    name: Signal Detection Analysis
+    description: Template for safety signal investigation
+    fields:
+      - manufacturer_clean
+      - product_code
+      - event_type
+      - date_received
+      - brand_name
+    include_text: true
+    text_types:
+      - D
+      - H
+
+  manufacturer_comparison:
+    name: Manufacturer Comparison
+    description: Compare metrics across manufacturers
+    fields:
+      - manufacturer_clean
+      - product_code
+      - event_type
+      - date_received
+    group_by: manufacturer_clean
+    metrics:
+      - event_count
+      - death_rate
+      - injury_rate
+
+  trend_analysis:
+    name: Trend Analysis
+    description: Time-series trend analysis
+    fields:
+      - date_received
+      - manufacturer_clean
+      - event_type
+    time_granularity: monthly
+    rolling_window: 3

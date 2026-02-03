@@ -1,0 +1,334 @@
+# MAUDE UI Configuration
+# Externalized UI settings for consistent styling and behavior
+
+# =============================================================================
+# Color Schemes
+# =============================================================================
+colors:
+  # Manufacturer color palette
+  manufacturers:
+    Abbott: "#1f77b4"           # Blue
+    Medtronic: "#ff7f0e"        # Orange
+    Boston Scientific: "#2ca02c" # Green
+    Nevro: "#d62728"            # Red
+    Stimwave: "#9467bd"         # Purple
+    Nalu Medical: "#8c564b"     # Brown
+    Saluda Medical: "#e377c2"   # Pink
+    Other: "#7f7f7f"            # Gray
+    Unknown: "#bcbd22"          # Olive
+
+  # Event type colors
+  event_types:
+    Death: "#d62728"            # Red
+    Injury: "#ff7f0e"           # Orange
+    Malfunction: "#1f77b4"      # Blue
+    Other: "#7f7f7f"            # Gray
+    No Answer Provided: "#bcbd22" # Olive
+
+  # Chart primary colors
+  chart:
+    primary: "#1f77b4"
+    secondary: "#2ca02c"
+    accent: "#ff7f0e"
+    danger: "#d62728"
+    warning: "#ff7f0e"
+    success: "#2ca02c"
+    muted: "#7f7f7f"
+
+  # Status/severity colors
+  status:
+    critical: "#d62728"
+    warning: "#ff7f0e"
+    info: "#1f77b4"
+    success: "#2ca02c"
+    neutral: "#7f7f7f"
+
+  # Data quality indicator colors
+  data_quality:
+    excellent: "#2ca02c"        # >= 90% coverage
+    good: "#1f77b4"             # >= 70% coverage
+    moderate: "#ff7f0e"         # >= 50% coverage
+    poor: "#d62728"             # < 50% coverage
+    missing: "#7f7f7f"          # 0% coverage
+
+# =============================================================================
+# Sequential Color Palettes
+# =============================================================================
+palettes:
+  sequential:
+    blue: Blues
+    red: Reds
+    green: Greens
+    neutral: Greys
+    heatmap: RdYlBu_r
+    viridis: Viridis
+
+  diverging:
+    red_blue: RdBu
+    red_green: RdYlGn
+    spectral: Spectral
+
+  categorical:
+    default: Set1
+    pastel: Pastel1
+    bold: Dark2
+
+# =============================================================================
+# Chart Defaults
+# =============================================================================
+charts:
+  # Default chart dimensions
+  dimensions:
+    default_width: 800
+    default_height: 400
+    compact_height: 300
+    tall_height: 600
+    export_width: 1200
+    export_height: 800
+
+  # Font settings
+  fonts:
+    family: "Arial, sans-serif"
+    title_size: 16
+    axis_title_size: 12
+    tick_size: 10
+    legend_size: 10
+    annotation_size: 9
+
+  # Layout settings
+  layout:
+    margin_top: 60
+    margin_bottom: 60
+    margin_left: 80
+    margin_right: 40
+    legend_position: "right"
+    show_grid: true
+    grid_color: "#e0e0e0"
+
+  # Time series specific
+  time_series:
+    line_width: 2
+    marker_size: 6
+    show_markers: true
+    fill_area: false
+    smoothing: 0.3
+
+  # Bar chart specific
+  bar:
+    bar_width: 0.8
+    group_gap: 0.1
+    show_values: true
+    value_format: ","
+    orientation: vertical
+
+  # Pie/donut specific
+  pie:
+    hole_size: 0.4          # 0 = pie, 0.4 = donut
+    show_percentages: true
+    text_position: "inside"
+    min_slice_pct: 2        # Combine slices below this %
+
+# =============================================================================
+# Table Defaults
+# =============================================================================
+tables:
+  # Pagination
+  pagination:
+    default_page_size: 25
+    page_size_options:
+      - 10
+      - 25
+      - 50
+      - 100
+    max_page_size: 500
+
+  # Display settings
+  display:
+    max_column_width: 300
+    truncate_text_at: 100
+    date_format: "%Y-%m-%d"
+    datetime_format: "%Y-%m-%d %H:%M"
+    number_format: ","
+    decimal_places: 2
+    null_display: "N/A"
+    true_display: "Yes"
+    false_display: "No"
+
+  # Column defaults by type
+  column_widths:
+    mdr_report_key: 120
+    date: 100
+    manufacturer: 150
+    product_code: 80
+    event_type: 100
+    text_content: 400
+    count: 80
+    percentage: 80
+
+# =============================================================================
+# Filter UI Settings
+# =============================================================================
+filters:
+  # Dropdown behavior
+  dropdowns:
+    max_visible_items: 10
+    search_threshold: 20       # Show search if > N items
+    show_counts: true          # Show record count per option
+    show_coverage: true        # Show data coverage indicator
+
+  # Date picker
+  date_picker:
+    format: "%Y-%m-%d"
+    first_day_of_week: 0       # 0 = Sunday
+    min_date: "1991-01-01"     # Earliest MAUDE data
+    quick_ranges:
+      - "Last 30 days"
+      - "Last 90 days"
+      - "Last 12 months"
+      - "Year to date"
+      - "All time"
+
+  # Multiselect
+  multiselect:
+    max_selections: 50
+    select_all_threshold: 10   # Show "Select All" if <= N items
+
+  # Search box
+  search:
+    min_chars: 2
+    debounce_ms: 300
+    max_results: 100
+    highlight_matches: true
+
+# =============================================================================
+# KPI Cards
+# =============================================================================
+kpi_cards:
+  # Layout
+  layout:
+    cards_per_row: 4
+    card_height: 120
+
+  # Display
+  display:
+    show_trend: true
+    show_delta: true
+    delta_period_days: 30
+    number_format: ","
+    large_number_threshold: 1000000
+    large_number_suffix: "M"
+
+  # Trend indicators
+  trends:
+    up_color: "#d62728"        # Red for adverse events going up
+    down_color: "#2ca02c"      # Green for adverse events going down
+    neutral_color: "#7f7f7f"
+    change_threshold: 0.05     # 5% change threshold
+
+# =============================================================================
+# Data Quality Indicators
+# =============================================================================
+data_quality:
+  # Coverage thresholds
+  thresholds:
+    excellent: 90
+    good: 70
+    moderate: 50
+    poor: 0
+
+  # Display settings
+  display:
+    show_coverage_badge: true
+    show_coverage_tooltip: true
+    show_missing_warning: true
+    warning_threshold: 50
+
+  # Badge styles
+  badges:
+    excellent:
+      text: "Complete"
+      color: "#2ca02c"
+    good:
+      text: "Good"
+      color: "#1f77b4"
+    moderate:
+      text: "Partial"
+      color: "#ff7f0e"
+    poor:
+      text: "Sparse"
+      color: "#d62728"
+
+# =============================================================================
+# Export Settings
+# =============================================================================
+export:
+  # Excel export
+  excel:
+    max_rows: 100000
+    sheets:
+      summary:
+        freeze_panes: "A2"
+        auto_filter: true
+      details:
+        freeze_panes: "A2"
+        auto_filter: true
+    formatting:
+      header_bg_color: "#4472C4"
+      header_font_color: "#FFFFFF"
+      date_format: "YYYY-MM-DD"
+      number_format: "#,##0"
+
+  # Chart export
+  chart:
+    formats:
+      - png
+      - svg
+      - html
+    png:
+      scale: 2
+      width: 1200
+      height: 800
+    svg:
+      width: 1200
+      height: 800
+
+  # CSV export
+  csv:
+    max_rows: 500000
+    encoding: "utf-8"
+    delimiter: ","
+    include_bom: true
+
+# =============================================================================
+# Notification/Alert Settings
+# =============================================================================
+notifications:
+  # Toast messages
+  toast:
+    duration_ms: 3000
+    position: "top-right"
+    show_close: true
+
+  # Long operation warnings
+  long_operation:
+    warning_threshold_ms: 5000
+    show_progress: true
+    cancelable: true
+
+  # Data freshness
+  freshness:
+    warning_days: 7
+    critical_days: 14
+    show_last_update: true
+
+# =============================================================================
+# Accessibility
+# =============================================================================
+accessibility:
+  # Color blindness accommodations
+  use_patterns: true           # Use patterns in addition to colors
+  high_contrast_mode: false    # Enable high contrast
+
+  # Screen reader support
+  chart_descriptions: true     # Generate alt text for charts
+  table_summaries: true        # Generate table summaries

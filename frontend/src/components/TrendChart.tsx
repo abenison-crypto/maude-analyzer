@@ -3,6 +3,7 @@ import { useTrends } from '../hooks/useAnalytics'
 
 interface TrendChartProps {
   groupBy?: 'day' | 'month' | 'year'
+  dateField?: 'date_received' | 'date_of_event'
   showDeaths?: boolean
   showInjuries?: boolean
   showMalfunctions?: boolean
@@ -10,11 +11,12 @@ interface TrendChartProps {
 
 export default function TrendChart({
   groupBy = 'month',
+  dateField = 'date_received',
   showDeaths = true,
   showInjuries = true,
   showMalfunctions = true,
 }: TrendChartProps) {
-  const { data: trends, isLoading } = useTrends(groupBy)
+  const { data: trends, isLoading } = useTrends(groupBy, dateField)
 
   if (isLoading) {
     return (

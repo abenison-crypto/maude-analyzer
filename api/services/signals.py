@@ -50,10 +50,15 @@ class SignalDetectionService:
     def __init__(self):
         self.db = get_db()
 
+    def _get_date_column(self, request: SignalRequest) -> str:
+        """Get the date column to use for analysis."""
+        return request.date_field if request.date_field in ("date_received", "date_of_event") else "date_received"
+
     def detect_signals(self, request: SignalRequest) -> SignalResponse:
         """Main entry point for signal detection."""
         # Determine time range
-        time_info = self._resolve_time_range(request.time_config)
+        date_col = self._get_date_column(request)
+        time_info = self._resolve_time_range(request.time_config, date_col)
 
         # Get base entity data
         entities = self._get_entity_data(request, time_info)
@@ -132,12 +137,12 @@ class SignalDetectionService:
             normal_count=normal_count,
         )
 
-    def _resolve_time_range(self, config: TimeComparisonConfig) -> TimeInfo:
+    def _resolve_time_range(self, config: TimeComparisonConfig, date_col: str = "date_received") -> TimeInfo:
         """Resolve time configuration to concrete dates."""
         # Get max date from database
-        result = self.db.fetch_one("""
-            SELECT MAX(date_received) FROM master_events
-            WHERE manufacturer_clean IS NOT NULL
+        result = self.db.fetch_one(f"""
+            SELECT MAX({date_col}) FROM master_events
+            WHERE manufacturer_clean IS NOT NULL AND {date_col} IS NOT NULL
         """)
         max_date = result[0] if result and result[0] else date.today()
 
@@ -256,6 +261,7 @@ class SignalDetectionService:
         """Get aggregated data for entities at the specified level."""
         level_col = self.LEVEL_COLUMNS[request.level]
         needs_device_join = request.level != DrillDownLevel.MANUFACTURER
+        date_col = self._get_date_column(request)
 
         # Get grouping expression (handles entity groups if active)
         entity_select, entity_group = self._build_entity_grouping_expression(request)
@@ -265,9 +271,10 @@ class SignalDetectionService:
 
         # Build conditions
         conditions = [
-            f"m.date_received >= ?",
-            f"m.date_received <= ?",
+            f"m.{date_col} >= ?",
+            f"m.{date_col} <= ?",
             f"{level_col} IS NOT NULL",
+            f"m.{date_col} IS NOT NULL",
         ]
         params = [time_info.analysis_start.isoformat(), time_info.analysis_end.isoformat()]
 
@@ -314,7 +321,7 @@ class SignalDetectionService:
                 WITH monthly_counts AS (
                     SELECT
                         {entity_select} as entity,
-                        DATE_TRUNC('month', m.date_received) as month,
+                        DATE_TRUNC('month', m.{date_col}) as month,
                         COUNT(DISTINCT m.mdr_report_key) as event_count,
                         COUNT(DISTINCT CASE WHEN m.event_type = 'D' THEN m.mdr_report_key END) as death_count,
                         COUNT(DISTINCT CASE WHEN m.event_type = 'IN' THEN m.mdr_report_key END) as injury_count,
@@ -322,7 +329,7 @@ class SignalDetectionService:
                     FROM master_events m
                     JOIN devices d ON d.mdr_report_key = m.mdr_report_key
                     WHERE {where_clause}
-                    GROUP BY {entity_group}, DATE_TRUNC('month', m.date_received)
+                    GROUP BY {entity_group}, DATE_TRUNC('month', m.{date_col})
                 ),
                 entity_stats AS (
                     SELECT
@@ -361,14 +368,14 @@ class SignalDetectionService:
                 WITH monthly_counts AS (
                     SELECT
                         {entity_select} as entity,
-                        DATE_TRUNC('month', m.date_received) as month,
+                        DATE_TRUNC('month', m.{date_col}) as month,
                         COUNT(DISTINCT m.mdr_report_key) as event_count,
                         COUNT(DISTINCT CASE WHEN m.event_type = 'D' THEN m.mdr_report_key END) as death_count,
                         COUNT(DISTINCT CASE WHEN m.event_type = 'IN' THEN m.mdr_report_key END) as injury_count,
                         COUNT(DISTINCT CASE WHEN m.event_type = 'M' THEN m.mdr_report_key END) as malfunction_count
                     FROM master_events m
                     WHERE {where_clause}
-                    GROUP BY {entity_group}, DATE_TRUNC('month', m.date_received)
+                    GROUP BY {entity_group}, DATE_TRUNC('month', m.{date_col})
                 ),
                 entity_stats AS (
                     SELECT
@@ -432,6 +439,7 @@ class SignalDetectionService:
 
         level_col = self.LEVEL_COLUMNS[request.level]
         needs_device_join = request.level != DrillDownLevel.MANUFACTURER
+        date_col = self._get_date_column(request)
 
         entity_names = [e["entity"] for e in entities]
         if not entity_names:
@@ -444,7 +452,7 @@ class SignalDetectionService:
                 SELECT {level_col} as entity, COUNT(DISTINCT m.mdr_report_key) as events
                 FROM master_events m
                 JOIN devices d ON d.mdr_report_key = m.mdr_report_key
-                WHERE m.date_received >= ? AND m.date_received <= ?
+                WHERE m.{date_col} >= ? AND m.{date_col} <= ?
                 AND {level_col} IN ({placeholders})
                 GROUP BY {level_col}
             """
@@ -452,7 +460,7 @@ class SignalDetectionService:
             query = f"""
                 SELECT m.manufacturer_clean as entity, COUNT(DISTINCT m.mdr_report_key) as events
                 FROM master_events m
-                WHERE m.date_received >= ? AND m.date_received <= ?
+                WHERE m.{date_col} >= ? AND m.{date_col} <= ?
                 AND m.manufacturer_clean IN ({placeholders})
                 GROUP BY m.manufacturer_clean
             """
@@ -801,9 +809,10 @@ class SignalDetectionService:
         entity = entity_data["entity"]
         level_col = self.LEVEL_COLUMNS[request.level]
         needs_device_join = request.level != DrillDownLevel.MANUFACTURER
+        date_col = self._get_date_column(request)
 
         # Build base query conditions
-        conditions = ["m.date_received >= ?", "m.date_received <= ?"]
+        conditions = [f"m.{date_col} >= ?", f"m.{date_col} <= ?"]
         params = [time_info.analysis_start.isoformat(), time_info.analysis_end.isoformat()]
 
         # Apply comparison population filters
@@ -861,22 +870,23 @@ class SignalDetectionService:
         """Get monthly event counts for an entity."""
         level_col = self.LEVEL_COLUMNS[request.level]
         needs_device_join = request.level != DrillDownLevel.MANUFACTURER
+        date_col = self._get_date_column(request)
 
         if needs_device_join:
             query = f"""
-                SELECT DATE_TRUNC('month', m.date_received) as month, COUNT(DISTINCT m.mdr_report_key) as count
+                SELECT DATE_TRUNC('month', m.{date_col}) as month, COUNT(DISTINCT m.mdr_report_key) as count
                 FROM master_events m
                 JOIN devices d ON d.mdr_report_key = m.mdr_report_key
-                WHERE m.date_received >= ? AND m.date_received <= ?
+                WHERE m.{date_col} >= ? AND m.{date_col} <= ?
                 AND {level_col} = ?
                 GROUP BY 1
                 ORDER BY 1
             """
         else:
             query = f"""
-                SELECT DATE_TRUNC('month', m.date_received) as month, COUNT(DISTINCT m.mdr_report_key) as count
+                SELECT DATE_TRUNC('month', m.{date_col}) as month, COUNT(DISTINCT m.mdr_report_key) as count
                 FROM master_events m
-                WHERE m.date_received >= ? AND m.date_received <= ?
+                WHERE m.{date_col} >= ? AND m.{date_col} <= ?
                 AND m.manufacturer_clean = ?
                 GROUP BY 1
                 ORDER BY 1

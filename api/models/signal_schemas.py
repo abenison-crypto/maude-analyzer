@@ -116,6 +116,12 @@ class SignalRequest(BaseModel):
         description="Active entity groups to apply. Group members are treated as a single entity."
     )
 
+    # Date field for analysis
+    date_field: Literal["date_received", "date_of_event"] = Field(
+        default="date_received",
+        description="Date field to use: date_received (when FDA got report) or date_of_event (when event occurred)"
+    )
+
     # Thresholds and limits
     min_events: int = Field(default=10, ge=1, description="Minimum events to consider")
     limit: int = Field(default=20, ge=1, le=100, description="Maximum results to return")

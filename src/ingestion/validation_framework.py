@@ -48,10 +48,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from config.logging_config import get_logger
 from config.schema_registry import (
     get_fda_columns,
-    get_columns_for_count,
     ALTERNATIVE_COLUMN_COUNTS,
 )
 from src.database import get_connection
+from src.ingestion.parser import count_physical_lines
 
 logger = get_logger("validation_framework")
 
@@ -227,6 +227,7 @@ class ValidationPipeline:
         - File encoding is valid
         - Header row matches expected format
         - Column count matches expected schema
+        - Physical line count (detects quote-swallowing issues)
 
         Args:
             filepath: Path to the file.
@@ -307,9 +308,8 @@ class ValidationPipeline:
             columns = header_line.split(delimiter)
             actual_count = len(columns)
 
-            expected_counts = get_columns_for_count(file_type)
-            alternative_counts = ALTERNATIVE_COLUMN_COUNTS.get(file_type, [])
-            all_valid_counts = expected_counts + alternative_counts
+            # Get all valid column counts for this file type (handles schema evolution)
+            all_valid_counts = ALTERNATIVE_COLUMN_COUNTS.get(file_type, [])
 
             result.metrics["column_count"] = actual_count
             result.metrics["expected_counts"] = all_valid_counts
@@ -343,6 +343,42 @@ class ValidationPipeline:
                         expected_value=expected_first,
                         actual_value=actual_first,
                     ))
+
+        # Count physical lines to detect quote-swallowing
+        # This is CRITICAL - the CSV reader can silently consume millions of lines
+        # if it encounters unmatched quotes. We count physical lines independently
+        # to provide a ground truth for comparison with CSV-parsed counts.
+        try:
+            physical_lines, valid_data_lines, orphan_lines = count_physical_lines(
+                filepath, encoding=encoding or 'latin-1'
+            )
+
+            result.metrics["physical_lines"] = physical_lines
+            result.metrics["valid_data_lines"] = valid_data_lines
+            result.metrics["orphan_lines"] = orphan_lines
+
+            # Log if there are many orphan lines (embedded newlines)
+            if orphan_lines > 100:
+                result.add_issue(ValidationIssue(
+                    stage=1,
+                    category="data_quality",
+                    severity="INFO",
+                    code="EMBEDDED_NEWLINES_DETECTED",
+                    message=f"File has {orphan_lines:,} orphan lines (embedded newlines in text fields)",
+                    actual_value=orphan_lines,
+                ))
+
+            # This will be compared against loaded count in Stage 3
+            # to detect parsing issues like quote-swallowing
+
+        except Exception as e:
+            result.add_issue(ValidationIssue(
+                stage=1,
+                category="file_structure",
+                severity="WARNING",
+                code="PHYSICAL_LINE_COUNT_ERROR",
+                message=f"Could not count physical lines: {e}",
+            ))
 
         self.stats["files_validated"] += 1
         if not result.passed:
@@ -529,20 +565,25 @@ class ValidationPipeline:
         file_type: str,
         expected_count: int,
         loaded_count: int,
+        physical_line_count: int = 0,
     ) -> StageValidationResult:
         """
         Stage 3: Post-Load Validation.
 
         Validates after database insert:
-        - Record counts match source
+        - Record counts match source PHYSICAL line count (not CSV-parsed count)
         - No new orphan records created
         - Referential integrity maintained
+
+        IMPORTANT: expected_count may come from CSV parsing which can be wrong
+        due to quote-swallowing. physical_line_count is the ground truth.
 
         Args:
             filename: Name of the loaded file.
             file_type: Type of file loaded.
-            expected_count: Expected record count from source.
+            expected_count: Expected record count from CSV parsing (may be wrong).
             loaded_count: Actual records loaded.
+            physical_line_count: Physical lines in source file (ground truth).
 
         Returns:
             StageValidationResult with issues found.
@@ -552,25 +593,48 @@ class ValidationPipeline:
             stage_name="Post-Load",
         )
 
-        # Check record count variance
-        if expected_count > 0:
-            variance = abs(loaded_count - expected_count)
-            variance_pct = (variance / expected_count) * 100
+        # Use physical line count as ground truth if available
+        ground_truth = physical_line_count if physical_line_count > 0 else expected_count
 
-            result.metrics["expected_count"] = expected_count
-            result.metrics["loaded_count"] = loaded_count
+        result.metrics["physical_line_count"] = physical_line_count
+        result.metrics["csv_parsed_count"] = expected_count
+        result.metrics["loaded_count"] = loaded_count
+
+        # CRITICAL CHECK: Detect quote-swallowing by comparing physical vs CSV counts
+        if physical_line_count > 0 and expected_count > 0:
+            csv_vs_physical_diff = physical_line_count - expected_count
+            if csv_vs_physical_diff > 1000:
+                csv_loss_pct = (csv_vs_physical_diff / physical_line_count) * 100
+                result.add_issue(ValidationIssue(
+                    stage=3,
+                    category="parsing",
+                    severity="CRITICAL",
+                    code="QUOTE_SWALLOWING_DETECTED",
+                    message=f"CSV parser saw {expected_count:,} rows but file has {physical_line_count:,} lines. "
+                            f"Quote-swallowing likely consumed {csv_vs_physical_diff:,} records ({csv_loss_pct:.1f}%)",
+                    expected_value=physical_line_count,
+                    actual_value=expected_count,
+                ))
+
+        # Check record count variance against ground truth
+        if ground_truth > 0:
+            variance = abs(loaded_count - ground_truth)
+            variance_pct = (variance / ground_truth) * 100
+
+            result.metrics["expected_count"] = ground_truth
             result.metrics["variance"] = variance
             result.metrics["variance_pct"] = round(variance_pct, 2)
 
             if variance_pct > 0.1:
-                severity = "ERROR" if variance_pct > 1.0 else "WARNING"
+                severity = "CRITICAL" if variance_pct > 10.0 else ("ERROR" if variance_pct > 1.0 else "WARNING")
                 result.add_issue(ValidationIssue(
                     stage=3,
                     category="completeness",
                     severity=severity,
                     code="RECORD_COUNT_VARIANCE",
-                    message=f"Record count variance {variance_pct:.2f}% exceeds threshold",
-                    expected_value=expected_count,
+                    message=f"Record count variance {variance_pct:.2f}% exceeds threshold "
+                            f"(expected {ground_truth:,}, loaded {loaded_count:,})",
+                    expected_value=ground_truth,
                     actual_value=loaded_count,
                 ))
 

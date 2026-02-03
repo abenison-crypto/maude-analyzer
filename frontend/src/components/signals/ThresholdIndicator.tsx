@@ -49,13 +49,35 @@ export default function ThresholdIndicator({
     high: 'bg-red-600',
   }
 
+  const suffix = config.isPercentage ? '%' : ''
+
   return (
-    <div className="w-full">
-      {/* Gauge bar */}
+    <div className="w-full pt-4">
+      {/* Current value label above marker */}
+      <div className="relative h-0">
+        <div
+          className="absolute -top-4 text-[9px] font-semibold text-gray-700 transform -translate-x-1/2 whitespace-nowrap"
+          style={{ left: `${position}%` }}
+        >
+          {value.toFixed(1)}{suffix}
+        </div>
+      </div>
+
+      {/* Gauge bar with threshold markers */}
       <div className="relative h-1.5 rounded-full overflow-hidden flex">
         <div className="bg-gray-200" style={{ width: `${normalWidth}%` }} />
         <div className="bg-yellow-200" style={{ width: `${elevatedWidth}%` }} />
         <div className="bg-red-200" style={{ width: `${highWidth}%` }} />
+
+        {/* Threshold boundary markers */}
+        <div
+          className="absolute top-0 h-full w-0.5 bg-yellow-500"
+          style={{ left: `${normalWidth}%` }}
+        />
+        <div
+          className="absolute top-0 h-full w-0.5 bg-red-500"
+          style={{ left: `${normalWidth + elevatedWidth}%` }}
+        />
       </div>
 
       {/* Marker */}
@@ -66,11 +88,22 @@ export default function ThresholdIndicator({
         />
       </div>
 
-      {/* Labels */}
-      <div className="flex justify-between text-[9px] text-gray-400 mt-1">
-        <span>{config.min}{config.isPercentage ? '%' : ''}</span>
-        <span>{config.elevatedAt}{config.isPercentage ? '%' : ''}</span>
-        <span>{config.highAt}{config.isPercentage ? '%' : ''}</span>
+      {/* Labels positioned at actual zone boundaries */}
+      <div className="relative text-[9px] text-gray-400 mt-1 h-3">
+        <span className="absolute left-0">{config.min}{suffix}</span>
+        <span
+          className="absolute transform -translate-x-1/2"
+          style={{ left: `${normalWidth}%` }}
+        >
+          {config.elevatedAt}{suffix}
+        </span>
+        <span
+          className="absolute transform -translate-x-1/2"
+          style={{ left: `${normalWidth + elevatedWidth}%` }}
+        >
+          {config.highAt}{suffix}
+        </span>
+        <span className="absolute right-0">{config.max}{suffix}</span>
       </div>
     </div>
   )
@@ -106,6 +139,16 @@ export function ThresholdIndicatorCompact({
         <div className="bg-gray-200" style={{ width: `${normalWidth}%` }} />
         <div className="bg-yellow-200" style={{ width: `${elevatedWidth}%` }} />
         <div className="bg-red-200" style={{ width: `${highWidth}%` }} />
+
+        {/* Threshold boundary markers */}
+        <div
+          className="absolute top-0 h-full w-px bg-yellow-500"
+          style={{ left: `${normalWidth}%` }}
+        />
+        <div
+          className="absolute top-0 h-full w-px bg-red-500"
+          style={{ left: `${normalWidth + elevatedWidth}%` }}
+        />
       </div>
       <div className="relative h-0">
         <div

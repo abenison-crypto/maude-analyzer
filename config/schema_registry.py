@@ -492,10 +492,10 @@ EXPECTED_COLUMN_COUNTS: Dict[str, int] = {
 }
 
 # Alternative column counts for historical files
-# Device: 28 (pre-2020 foidev*.txt) or 34 (2020+ device*.txt with UDI fields)
+# Device: 45 (1997-2008 with BASELINE_*), 28 (2009-2019), 34 (2020+ with UDI fields)
 ALTERNATIVE_COLUMN_COUNTS: Dict[str, List[int]] = {
     "master": [84, 86],  # Historical vs current
-    "device": [28, 34],  # Pre-2020 (28 cols) vs 2020+ extended format (34 cols)
+    "device": [45, 28, 34],  # Legacy (45), Pre-2020 (28), 2020+ extended (34)
     "patient": [10],
     "text": [6],
     "problem": [2],

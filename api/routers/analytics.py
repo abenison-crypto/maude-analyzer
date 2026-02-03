@@ -27,10 +27,26 @@ async def get_trends(
     date_from: Optional[date] = Query(None, description="Start date"),
     date_to: Optional[date] = Query(None, description="End date"),
     group_by: str = Query("month", description="Group by: day, month, or year"),
+    date_field: str = Query(
+        "date_received",
+        description="Date field to use: date_received (when FDA got report) or date_of_event (when event occurred)"
+    ),
 ):
-    """Get event trends over time."""
+    """Get event trends over time.
+
+    The date_field parameter controls which date is used for trend analysis:
+    - date_received: When FDA received the report (default). Best for tracking reporting patterns.
+    - date_of_event: When the event actually occurred. Better for understanding actual event timing,
+      but note that this field may be NULL or inaccurate for some reports.
+    """
     if group_by not in ("day", "month", "year"):
         raise HTTPException(status_code=400, detail="group_by must be day, month, or year")
+
+    if date_field not in ("date_received", "date_of_event"):
+        raise HTTPException(
+            status_code=400,
+            detail="date_field must be date_received or date_of_event"
+        )
 
     query_service = QueryService()
 
@@ -45,6 +61,7 @@ async def get_trends(
         date_from=date_from,
         date_to=date_to,
         group_by=group_by,
+        date_field=date_field,
     )
 
 

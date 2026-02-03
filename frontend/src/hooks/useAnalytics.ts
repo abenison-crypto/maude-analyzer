@@ -2,11 +2,14 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAdvancedFilters } from './useAdvancedFilters'
 
-export function useTrends(groupBy: 'day' | 'month' | 'year' = 'month') {
+export function useTrends(
+  groupBy: 'day' | 'month' | 'year' = 'month',
+  dateField: 'date_received' | 'date_of_event' = 'date_received'
+) {
   const { filters } = useAdvancedFilters()
 
   return useQuery({
-    queryKey: ['trends', filters.manufacturers, filters.productCodes, filters.eventTypes, filters.dateFrom, filters.dateTo, groupBy],
+    queryKey: ['trends', filters.manufacturers, filters.productCodes, filters.eventTypes, filters.dateFrom, filters.dateTo, groupBy, dateField],
     queryFn: () =>
       api.getTrends({
         manufacturers: filters.manufacturers.length ? filters.manufacturers : undefined,
@@ -15,6 +18,7 @@ export function useTrends(groupBy: 'day' | 'month' | 'year' = 'month') {
         dateFrom: filters.dateFrom || undefined,
         dateTo: filters.dateTo || undefined,
         groupBy,
+        dateField,
       }),
   })
 }

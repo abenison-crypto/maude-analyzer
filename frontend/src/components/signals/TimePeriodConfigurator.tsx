@@ -113,25 +113,59 @@ export default function TimePeriodConfigurator({ config, onChange, selectedMetho
       {/* Mode-specific Controls */}
       <div className="pt-2">
         {config.mode === 'lookback' && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Analyze events from the last:
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {LOOKBACK_OPTIONS.map((months) => (
-                <button
-                  key={months}
-                  onClick={() => onChange({ ...config, lookback_months: months })}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    config.lookback_months === months
-                      ? 'bg-blue-100 text-blue-800 border-2 border-blue-300'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-2 border-transparent'
-                  }`}
-                >
-                  {months} months
-                </button>
-              ))}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Analyze events from the last:
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {LOOKBACK_OPTIONS.map((months) => (
+                  <button
+                    key={months}
+                    onClick={() => onChange({ ...config, lookback_months: months })}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      config.lookback_months === months
+                        ? 'bg-blue-100 text-blue-800 border-2 border-blue-300'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-2 border-transparent'
+                    }`}
+                  >
+                    {months} months
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Comparison month selector for Z-Score method */}
+            {selectedMethods.includes('zscore') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Compare month (for Z-Score):
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="month"
+                    value={config.comparison_month || ''}
+                    onChange={(e) =>
+                      onChange({ ...config, comparison_month: e.target.value || undefined })
+                    }
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  />
+                  <span className="text-xs text-gray-500">
+                    {config.comparison_month
+                      ? 'Z-score will be calculated for this month'
+                      : 'Leave empty to use the latest month'}
+                  </span>
+                  {config.comparison_month && (
+                    <button
+                      onClick={() => onChange({ ...config, comparison_month: undefined })}
+                      className="text-xs text-gray-500 hover:text-gray-700 underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

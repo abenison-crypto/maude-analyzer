@@ -271,7 +271,10 @@ export const api = {
 
   // Analytics
   getTrends: (
-    filters: Omit<EventFilters, 'page' | 'pageSize' | 'searchText'> & { groupBy?: 'day' | 'month' | 'year' } = {}
+    filters: Omit<EventFilters, 'page' | 'pageSize' | 'searchText'> & {
+      groupBy?: 'day' | 'month' | 'year'
+      dateField?: 'date_received' | 'date_of_event'
+    } = {}
   ): Promise<TrendData[]> => {
     const params = new URLSearchParams()
     if (filters.manufacturers?.length) params.set('manufacturers', filters.manufacturers.join(','))
@@ -280,6 +283,7 @@ export const api = {
     if (filters.dateFrom) params.set('date_from', filters.dateFrom)
     if (filters.dateTo) params.set('date_to', filters.dateTo)
     if (filters.groupBy) params.set('group_by', filters.groupBy)
+    if (filters.dateField) params.set('date_field', filters.dateField)
     return fetchJSON(`${API_BASE}/analytics/trends?${params}`)
   },
 

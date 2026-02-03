@@ -67,7 +67,8 @@ class LoadResult:
     error_messages: List[str] = field(default_factory=list)
     schema_info: Optional[SchemaInfo] = None
     # File audit tracking
-    source_record_count: Optional[int] = None  # Count from source file
+    source_record_count: Optional[int] = None  # Count from source file (CSV-parsed, may be wrong)
+    physical_line_count: Optional[int] = None  # Physical lines in file (ground truth)
     record_count_variance_pct: Optional[float] = None  # Difference between source and loaded
     column_mismatch_count: int = 0
     checksum: Optional[str] = None
@@ -78,6 +79,11 @@ class LoadResult:
     stage2_validation_warnings: int = 0
     stage3_validation: Optional[StageValidationResult] = None
     duplicates_removed: int = 0
+    # Quote-swallowing detection
+    quote_swallowing_detected: bool = False
+    # Batch insert tracking
+    batches_committed: int = 0
+    batch_insert_errors: int = 0
 
 
 # Expanded column lists for database insertion
@@ -278,6 +284,7 @@ class MAUDELoader:
         variance_threshold_pct: float = 0.1,
         detect_duplicates: bool = True,
         enable_validation: bool = True,
+        commit_every_n_batches: int = 50,
     ):
         """
         Initialize the loader.
@@ -292,6 +299,9 @@ class MAUDELoader:
             variance_threshold_pct: Max acceptable variance between source and loaded counts.
             detect_duplicates: Check for duplicate keys within batches before insert.
             enable_validation: Enable three-stage validation pipeline.
+            commit_every_n_batches: Commit transaction after this many batches to prevent OOM.
+                Default 50 batches (500K records with default batch_size). Set to 0 to
+                disable incremental commits (single transaction for entire file).
         """
         self.db_path = db_path or config.database.path
         self.batch_size = batch_size
@@ -300,6 +310,7 @@ class MAUDELoader:
         self.variance_threshold_pct = variance_threshold_pct
         self.detect_duplicates = detect_duplicates
         self.enable_validation = enable_validation
+        self.commit_every_n_batches = commit_every_n_batches
         self.parser = MAUDEParser()
         self.transformer = DataTransformer()
 
@@ -359,13 +370,16 @@ class MAUDELoader:
                 return
 
             # Insert or update file audit record
+            # Note: Use datetime.now() as parameter instead of CURRENT_TIMESTAMP
+            # DuckDB has issues with CURRENT_TIMESTAMP in VALUES clause with parameters
+            now = datetime.now()
             conn.execute("""
                 INSERT INTO file_audit (
                     filename, file_type, source_record_count, loaded_record_count,
                     skipped_record_count, error_record_count, column_mismatch_count,
                     load_status, schema_version, detected_column_count,
                     load_started, load_completed, error_message, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (filename) DO UPDATE SET
                     source_record_count = EXCLUDED.source_record_count,
                     loaded_record_count = EXCLUDED.loaded_record_count,
@@ -375,7 +389,7 @@ class MAUDELoader:
                     load_status = EXCLUDED.load_status,
                     load_completed = EXCLUDED.load_completed,
                     error_message = EXCLUDED.error_message,
-                    updated_at = CURRENT_TIMESTAMP
+                    updated_at = EXCLUDED.updated_at
             """, [
                 result.filename,
                 result.file_type,
@@ -388,8 +402,9 @@ class MAUDELoader:
                 result.schema_info.validation_message if result.schema_info else None,
                 result.schema_info.column_count if result.schema_info else None,
                 load_started,
-                datetime.now(),
+                now,
                 "; ".join(result.error_messages[:5]) if result.error_messages else None,
+                now,  # updated_at
             ])
 
             # Flag if variance exceeds threshold
@@ -556,9 +571,15 @@ class MAUDELoader:
         own_connection = conn is None
         if own_connection:
             conn = duckdb.connect(str(self.db_path))
+            # Set memory limit to prevent OOM errors during large batch inserts
+            # Use 8GB limit (leaves room for system and Python)
+            conn.execute("SET memory_limit='8GB'")
+            # Reduce threads to lower memory pressure
+            conn.execute("SET threads=4")
 
         transaction_started = False
         parse_result = None  # Track parse result for column mismatch stats
+        batches_in_current_transaction = 0  # Track batches for incremental commit
 
         try:
             # Begin transaction for data integrity
@@ -643,9 +664,36 @@ class MAUDELoader:
 
                     # Insert batch when full
                     if len(batch) >= self.batch_size:
-                        inserted = self._insert_batch(conn, file_type, batch)
-                        result.records_loaded += inserted
+                        try:
+                            inserted = self._insert_batch(conn, file_type, batch)
+                            result.records_loaded += inserted
+                            result.batches_committed += 1
+                            batches_in_current_transaction += 1
+                        except Exception as batch_err:
+                            result.batch_insert_errors += 1
+                            if len(result.error_messages) < 10:
+                                result.error_messages.append(f"Batch insert error: {batch_err}")
+                            # Try to recover by rolling back and starting new transaction
+                            if transaction_started:
+                                try:
+                                    conn.execute("ROLLBACK")
+                                    conn.execute("BEGIN TRANSACTION")
+                                    batches_in_current_transaction = 0
+                                except Exception:
+                                    pass
                         batch = []
+
+                        # Incremental commit to prevent OOM on large files
+                        # Commit every N batches to release memory
+                        if (self.commit_every_n_batches > 0 and
+                            batches_in_current_transaction >= self.commit_every_n_batches and
+                            transaction_started):
+                            conn.execute("COMMIT")
+                            conn.execute("BEGIN TRANSACTION")
+                            batches_in_current_transaction = 0
+                            logger.debug(
+                                f"Incremental commit after {result.records_loaded:,} records"
+                            )
 
                 except Exception as e:
                     result.records_errors += 1
@@ -654,8 +702,14 @@ class MAUDELoader:
 
             # Insert remaining records
             if batch:
-                inserted = self._insert_batch(conn, file_type, batch)
-                result.records_loaded += inserted
+                try:
+                    inserted = self._insert_batch(conn, file_type, batch)
+                    result.records_loaded += inserted
+                    result.batches_committed += 1
+                except Exception as batch_err:
+                    result.batch_insert_errors += 1
+                    if len(result.error_messages) < 10:
+                        result.error_messages.append(f"Final batch insert error: {batch_err}")
 
             # Commit transaction on success
             if self.enable_transaction_safety and transaction_started:
@@ -678,17 +732,28 @@ class MAUDELoader:
 
             # STAGE 3: Post-Load Validation
             if self._validation_pipeline:
+                # Get physical line count from Stage 1 metrics (ground truth)
+                physical_line_count = 0
+                if result.stage1_validation and result.stage1_validation.metrics:
+                    # Use valid_data_lines as the expected count (excludes header and orphan lines)
+                    physical_line_count = result.stage1_validation.metrics.get("valid_data_lines", 0)
+
                 result.stage3_validation = self._validation_pipeline.validate_stage3_post_load(
                     filename=filepath.name,
                     file_type=file_type,
                     expected_count=result.source_record_count or 0,
                     loaded_count=result.records_loaded,
+                    physical_line_count=physical_line_count,
                 )
                 if not result.stage3_validation.passed:
                     logger.warning(
                         f"Stage 3 validation issues for {filepath.name}: "
                         f"{result.stage3_validation.error_count} errors"
                     )
+                    # Log critical issues
+                    for issue in result.stage3_validation.issues:
+                        if issue.severity == "CRITICAL":
+                            logger.error(f"  [{issue.code}] {issue.message}")
 
             # Capture stage 2 validation summary
             result.stage2_validation_errors = self._stage2_errors
@@ -736,11 +801,13 @@ class MAUDELoader:
             validation_parts.append(
                 f"validation: {self._stage2_errors} errors, {self._stage2_warnings} warnings"
             )
+        if result.batch_insert_errors > 0:
+            validation_parts.append(f"{result.batch_insert_errors} batch errors")
 
         validation_str = f", {', '.join(validation_parts)}" if validation_parts else ""
 
         logger.info(
-            f"Loaded {filepath.name}: {result.records_loaded:,} records "
+            f"Loaded {filepath.name}: {result.records_loaded:,} records in {result.batches_committed} batches "
             f"({result.records_skipped:,} skipped, {result.records_errors:,} errors"
             f"{validation_str}) in {result.duration_seconds:.1f}s"
         )
@@ -809,6 +876,10 @@ class MAUDELoader:
 
         df = pd.DataFrame(rows, columns=columns)
 
+        # Define col_names before try block so it's available in except block
+        col_names = ", ".join(columns)
+        select_cols = ", ".join([f'"{c}"' for c in columns])
+
         try:
             # For child tables, DELETE existing records first to prevent duplicates
             # This is necessary because:
@@ -839,11 +910,6 @@ class MAUDELoader:
                     )
 
             # Use DuckDB's fast DataFrame insertion
-            # IMPORTANT: Specify column names in both INSERT and SELECT to ensure alignment
-            col_names = ", ".join(columns)
-            # Quote column names in SELECT to handle any special characters
-            select_cols = ", ".join([f'"{c}"' for c in columns])
-
             # For master_events, use INSERT OR REPLACE to handle duplicates
             # The same report can appear in multiple files (mdrfoi.txt + mdrfoiAdd.txt)
             # and we want to keep the most recent version

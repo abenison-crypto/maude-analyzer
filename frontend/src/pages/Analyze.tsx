@@ -22,6 +22,7 @@ const COLORS = ['#EF4444', '#F97316', '#EAB308', '#6B7280', '#3B82F6']
 export default function AnalyzePage() {
   const [activeTab, setActiveTab] = useState('trends')
   const [groupBy, setGroupBy] = useState<'month' | 'year'>('year')
+  const [dateField, setDateField] = useState<'date_received' | 'date_of_event'>('date_received')
   const [selectedMfrs, setSelectedMfrs] = useState<string[]>([])
   const [mfrSearch, setMfrSearch] = useState('')
 
@@ -80,7 +81,19 @@ export default function AnalyzePage() {
       <div className="mt-6">
         {activeTab === 'trends' && (
           <div className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-3">
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Date basis:</label>
+                <select
+                  value={dateField}
+                  onChange={(e) => setDateField(e.target.value as 'date_received' | 'date_of_event')}
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  title="date_received: When FDA received the report. date_of_event: When the event actually occurred."
+                >
+                  <option value="date_received">Report Date (FDA received)</option>
+                  <option value="date_of_event">Event Date (when occurred)</option>
+                </select>
+              </div>
               <select
                 value={groupBy}
                 onChange={(e) => setGroupBy(e.target.value as 'month' | 'year')}
@@ -90,7 +103,12 @@ export default function AnalyzePage() {
                 <option value="year">By Year</option>
               </select>
             </div>
-            <TrendChart groupBy={groupBy} />
+            {dateField === 'date_of_event' && (
+              <div className="text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-md">
+                Note: Event dates may be NULL or inaccurate for some reports. Consider using "Report Date" for more reliable trend analysis.
+              </div>
+            )}
+            <TrendChart groupBy={groupBy} dateField={dateField} />
           </div>
         )}
 

@@ -57,6 +57,117 @@ logger = get_logger("parser")
 csv.field_size_limit(sys.maxsize)
 
 
+# =============================================================================
+# EMBEDDED NEWLINE HANDLING
+# =============================================================================
+
+def preprocess_file_for_embedded_newlines(
+    filepath: Path,
+    encoding: str = "latin-1",
+) -> Tuple[List[str], int]:
+    """
+    Preprocess a MAUDE file to handle embedded newlines in text fields.
+
+    FDA MAUDE narrative text fields can contain embedded newlines, which cause
+    records to be split across multiple physical lines. This function detects
+    orphan lines (lines that don't start with a digit = MDR_REPORT_KEY) and
+    rejoins them with the previous record.
+
+    Args:
+        filepath: Path to the file.
+        encoding: File encoding.
+
+    Returns:
+        Tuple of (list of rejoined lines, count of rejoined records).
+    """
+    rejoined_lines = []
+    rejoin_count = 0
+
+    try:
+        with open(filepath, "r", encoding=encoding, errors="replace") as f:
+            lines = f.readlines()
+
+        if not lines:
+            return [], 0
+
+        current_line = lines[0].rstrip("\n\r")  # Keep header
+
+        for i, line in enumerate(lines[1:], start=1):
+            line = line.rstrip("\n\r")
+
+            # Skip empty lines
+            if not line.strip():
+                continue
+
+            # Valid data lines start with a digit (MDR_REPORT_KEY)
+            # Orphan lines are continuations of the previous record's text field
+            if line and line[0].isdigit():
+                # This is a new record - save the current one and start fresh
+                if current_line:
+                    rejoined_lines.append(current_line)
+                current_line = line
+            else:
+                # This is an orphan line - append to current record with a space
+                # Replace the embedded newline with a space to preserve readability
+                current_line = current_line + " " + line.lstrip()
+                rejoin_count += 1
+
+        # Don't forget the last record
+        if current_line:
+            rejoined_lines.append(current_line)
+
+    except Exception as e:
+        logger.error(f"Error preprocessing {filepath} for embedded newlines: {e}")
+        return [], 0
+
+    if rejoin_count > 0:
+        logger.info(
+            f"Preprocessed {filepath.name}: rejoined {rejoin_count} embedded newline fragments"
+        )
+
+    return rejoined_lines, rejoin_count
+
+
+def count_physical_lines(
+    filepath: Path,
+    encoding: str = "latin-1",
+) -> Tuple[int, int, int]:
+    """
+    Count physical lines in a MAUDE file for validation.
+
+    This is critical for detecting quote-swallowing bugs where the CSV reader
+    silently consumes records when encountering unmatched quotes.
+
+    Args:
+        filepath: Path to the file.
+        encoding: File encoding.
+
+    Returns:
+        Tuple of (total_physical_lines, valid_data_lines, orphan_lines).
+        - total_physical_lines: All lines including header
+        - valid_data_lines: Lines starting with digit (proper records)
+        - orphan_lines: Lines not starting with digit (embedded newline fragments)
+    """
+    total_lines = 0
+    valid_data_lines = 0
+    orphan_lines = 0
+
+    try:
+        with open(filepath, "r", encoding=encoding, errors="replace") as f:
+            for i, line in enumerate(f):
+                total_lines += 1
+                if i == 0:
+                    continue  # Skip header
+                if line and line[0].isdigit():
+                    valid_data_lines += 1
+                elif line.strip():
+                    orphan_lines += 1
+    except Exception as e:
+        logger.error(f"Error counting physical lines in {filepath}: {e}")
+
+    return total_lines, valid_data_lines, orphan_lines
+
+
 # Legacy column definitions for backward compatibility
 # These are the database column names (lowercase)
 MASTER_COLUMNS = [
@@ -576,7 +687,11 @@ class MAUDEParser:
             # Use detected encoding from schema (important for older files)
             file_encoding = schema.encoding if schema else self.encoding
             with open(filepath, "r", encoding=file_encoding, errors="replace") as f:
-                reader = csv.reader(f, delimiter="|", quotechar='"')
+                # IMPORTANT: Use QUOTE_NONE to disable quote handling
+                # FDA MAUDE data contains literal quote characters (e.g., O"REILLY)
+                # that are NOT field delimiters. Using quotechar='"' causes the CSV
+                # reader to swallow millions of records when an unmatched quote appears.
+                reader = csv.reader(f, delimiter="|", quoting=csv.QUOTE_NONE)
 
                 for line_num, row in enumerate(reader, 1):
                     result.total_rows += 1
@@ -712,7 +827,10 @@ class MAUDEParser:
         try:
             with open(filepath, "r", encoding=self.encoding, errors="replace") as f:
                 # Use comma delimiter for CSV files
-                reader = csv.reader(f, delimiter=",", quotechar='"')
+                # IMPORTANT: Use QUOTE_NONE to disable quote handling
+                # FDA MAUDE data contains literal quote characters that are NOT field delimiters.
+                # Using quotechar='"' causes the CSV reader to swallow records on unmatched quotes.
+                reader = csv.reader(f, delimiter=",", quoting=csv.QUOTE_NONE)
 
                 # First row is typically header
                 header_row = next(reader, None)
@@ -814,7 +932,10 @@ class MAUDEParser:
             else:
                 delimiter = "|"
 
-            reader = csv.reader(lines, delimiter=delimiter, quotechar='"')
+            # IMPORTANT: Use QUOTE_NONE to disable quote handling
+            # FDA MAUDE data contains literal quote characters that are NOT field delimiters.
+            # Using quotechar='"' causes the CSV reader to swallow records on unmatched quotes.
+            reader = csv.reader(lines, delimiter=delimiter, quoting=csv.QUOTE_NONE)
 
             for line_num, row in enumerate(reader, 1):
                     result.total_rows += 1
@@ -997,7 +1118,10 @@ class MAUDEParser:
         sample_rows = []
         try:
             with open(filepath, "r", encoding=self.encoding, errors="replace") as f:
-                reader = csv.reader(f, delimiter="|", quotechar='"')
+                # IMPORTANT: Use QUOTE_NONE to disable quote handling
+                # FDA MAUDE data contains literal quote characters that are NOT field delimiters.
+                # Using quotechar='"' causes the CSV reader to swallow records on unmatched quotes.
+                reader = csv.reader(f, delimiter="|", quoting=csv.QUOTE_NONE)
                 for i, row in enumerate(reader):
                     if i == 0 and schema.has_header:
                         continue

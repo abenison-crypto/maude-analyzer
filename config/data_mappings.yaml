@@ -1,0 +1,234 @@
+# MAUDE Data Mappings Configuration
+# Externalized codes, types, and mappings for schema flexibility
+
+# =============================================================================
+# Event Types
+# =============================================================================
+event_types:
+  codes:
+    D: Death
+    IN: Injury
+    M: Malfunction
+    O: Other
+    "*": No Answer Provided
+
+  # Alternative representations found in data
+  aliases:
+    DEATH: D
+    INJURY: IN
+    MALFUNCTION: M
+    OTHER: O
+
+  # Severity ordering for sorting/prioritization
+  severity_order:
+    - D
+    - IN
+    - M
+    - O
+    - "*"
+
+# =============================================================================
+# Patient Outcome Codes
+# =============================================================================
+outcome_codes:
+  codes:
+    D: Death
+    L: Life Threatening
+    H: Hospitalization
+    DS: Disability
+    CA: Congenital Anomaly
+    RI: Required Intervention
+    OT: Other
+
+  # Mapping to boolean field names in patients table
+  field_mapping:
+    D: outcome_death
+    L: outcome_life_threatening
+    H: outcome_hospitalization
+    DS: outcome_disability
+    CA: outcome_congenital_anomaly
+    RI: outcome_required_intervention
+    OT: outcome_other
+
+  # Codes that indicate serious outcomes
+  serious_outcomes:
+    - D
+    - L
+    - H
+    - DS
+
+# =============================================================================
+# Text Type Codes
+# =============================================================================
+text_type_codes:
+  codes:
+    D: Event Description
+    E: Evaluation Summary
+    H: Event History
+    M: Manufacturer Narrative
+    N: Additional Information
+
+  # Primary text type for analysis
+  primary_types:
+    - D  # Event Description is most informative
+    - H  # Event History provides context
+
+  # Display priority order
+  display_order:
+    - D
+    - H
+    - M
+    - E
+    - N
+
+# =============================================================================
+# Report Source Codes
+# =============================================================================
+report_source_codes:
+  codes:
+    "1": Manufacturer
+    "2": User Facility
+    "3": Distributor
+    "4": Foreign
+    "5": Voluntary
+
+  # Sources that require manufacturer reporting
+  mandatory_sources:
+    - "1"
+    - "2"
+
+# =============================================================================
+# Report Type Codes
+# =============================================================================
+report_type_codes:
+  codes:
+    "1": Initial
+    "2": Followup
+    "3": Supplemental
+
+# =============================================================================
+# Device Operator Codes
+# =============================================================================
+device_operator_codes:
+  codes:
+    HP: Health Professional
+    PT: Patient
+    LP: Lay Person
+    OT: Other
+    UK: Unknown
+
+# =============================================================================
+# Manufacturer Standardization
+# =============================================================================
+manufacturer_mappings:
+  # Abbott (including St. Jude acquisition)
+  Abbott:
+    - ABBOTT LABORATORIES
+    - ABBOTT
+    - ABBOTT MEDICAL
+    - ABBOTT NEUROMODULATION
+    - ST. JUDE MEDICAL
+    - ST JUDE MEDICAL
+    - ST. JUDE MEDICAL, INC.
+    - ST JUDE MEDICAL INC
+    - ST. JUDE NEUROMODULATION
+    - ABBOTT MEDICAL DEVICES
+
+  # Medtronic
+  Medtronic:
+    - MEDTRONIC
+    - MEDTRONIC, INC.
+    - MEDTRONIC INC
+    - MEDTRONIC INC.
+    - MEDTRONIC NEUROMODULATION
+    - MEDTRONIC SOFAMOR DANEK
+    - MEDTRONIC SPINE LLC
+    - MEDTRONIC USA
+
+  # Boston Scientific (including ANS acquisition)
+  Boston Scientific:
+    - BOSTON SCIENTIFIC
+    - BOSTON SCIENTIFIC CORPORATION
+    - BOSTON SCIENTIFIC CORP
+    - BOSTON SCIENTIFIC CORP.
+    - BOSTON SCIENTIFIC NEUROMODULATION
+    - BOSTON SCIENTIFIC NEUROMODULATION CORP
+    - ADVANCED NEUROMODULATION SYSTEMS
+    - ADVANCED NEUROMODULATION SYSTEMS, INC.
+    - ANS
+
+  # Nevro
+  Nevro:
+    - NEVRO
+    - NEVRO CORP
+    - NEVRO CORP.
+    - NEVRO CORPORATION
+
+  # Stimwave
+  Stimwave:
+    - STIMWAVE
+    - STIMWAVE TECHNOLOGIES
+    - STIMWAVE TECHNOLOGIES INC
+    - STIMWAVE TECHNOLOGIES INCORPORATED
+
+  # Nalu Medical
+  Nalu Medical:
+    - NALU
+    - NALU MEDICAL
+    - NALU MEDICAL, INC.
+
+  # Saluda Medical
+  Saluda Medical:
+    - SALUDA
+    - SALUDA MEDICAL
+    - SALUDA MEDICAL PTY LTD
+
+# =============================================================================
+# Product Code Descriptions
+# =============================================================================
+product_code_descriptions:
+  GZB: Stimulator, Spinal-cord, Totally Implanted For Pain Relief
+  LGW: Stimulator, Spinal-cord, Totally Implanted For Pain Relief
+  PMP: Stimulator, Electrical, Implanted, For Pain Relief
+  GZF: Electrode, Spinal Cord Stimulator
+  GZD: Stimulator, Cerebellar
+  GZE: Stimulator, Transcranial
+
+# =============================================================================
+# Date Formats
+# =============================================================================
+date_formats:
+  parse_formats:
+    - "%m/%d/%Y"    # 01/15/2024
+    - "%Y-%m-%d"    # 2024-01-15
+    - "%Y%m%d"      # 20240115
+    - "%d-%b-%Y"    # 15-Jan-2024
+    - "%B %d, %Y"   # January 15, 2024
+    - "%m-%d-%Y"    # 01-15-2024
+
+  display_format: "%Y-%m-%d"
+  short_display: "%m/%d/%y"
+
+# =============================================================================
+# Field Aliases (column name variations to support)
+# =============================================================================
+field_aliases:
+  manufacturer_name:
+    - manufacturer_name
+    - mfr_name
+    - manufacturer
+
+  product_code:
+    - product_code
+    - device_report_product_code
+    - prod_code
+
+  event_type:
+    - event_type
+    - event_type_code
+    - evt_type
+
+  date_received:
+    - date_received
+    - recv_date
+    - received_date

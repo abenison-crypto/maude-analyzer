@@ -335,24 +335,32 @@ class QueryService:
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
         group_by: str = "month",
+        date_field: str = "date_received",
     ) -> list[dict]:
         """Get event trends over time.
 
         Args:
             group_by: "day", "month", or "year".
+            date_field: Which date field to use for grouping. Options:
+                - "date_received": When FDA received the report (default)
+                - "date_of_event": When the event actually occurred
 
         Returns:
             List of time periods with counts.
         """
+        # Validate date_field
+        if date_field not in ("date_received", "date_of_event"):
+            date_field = "date_received"
+
         # Determine date expression based on grouping
         if group_by == "day":
-            date_expr = "date_received"
-            date_expr_full = "m.date_received"
+            date_expr = date_field
+            date_expr_full = f"m.{date_field}"
         elif group_by == "year":
-            date_expr = "DATE_TRUNC('year', m.date_received)"
+            date_expr = f"DATE_TRUNC('year', m.{date_field})"
             date_expr_full = date_expr
         else:
-            date_expr = "DATE_TRUNC('month', m.date_received)"
+            date_expr = f"DATE_TRUNC('month', m.{date_field})"
             date_expr_full = date_expr
 
         # Build query using SchemaAwareQueryBuilder
@@ -382,10 +390,10 @@ class QueryService:
         if event_types:
             builder.where_event_types(event_types)
         if date_from or date_to:
-            builder.where_date_range("date_received", date_from, date_to)
+            builder.where_date_range(date_field, date_from, date_to)
 
-        # Ensure date_received is not null
-        builder.where_not_null("date_received")
+        # Ensure date field is not null
+        builder.where_not_null(date_field)
 
         # Group by the date expression and order by period
         builder._group_by.append(date_expr_full)

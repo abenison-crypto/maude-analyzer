@@ -11,7 +11,7 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import config, SCS_PRODUCT_CODES, MANUFACTURER_MAPPINGS
+from config import config, MANUFACTURER_MAPPINGS
 from config.logging_config import get_logger
 from src.database import get_connection, get_table_counts
 from src.ingestion.download import MAUDEDownloader, FDA_DOWNLOAD_BASE
@@ -277,7 +277,7 @@ class DataUpdater:
         try:
             # Fetch from API
             logger.info(f"Fetching records from openFDA (last {days} days)...")
-            api_result = self.openfda_client.get_recent_scs_events(
+            api_result = self.openfda_client.get_recent_events(
                 days=days,
                 max_records=max_records,
             )

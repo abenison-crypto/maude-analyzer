@@ -47,6 +47,34 @@ class TestTrends:
         )
         assert response.status_code == 200
 
+    def test_get_trends_date_field_date_received(self, client):
+        """Test getting trends using date_received field."""
+        response = client.get(
+            "/api/analytics/trends",
+            params={"date_field": "date_received", "group_by": "year"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+
+    def test_get_trends_date_field_date_of_event(self, client):
+        """Test getting trends using date_of_event field."""
+        response = client.get(
+            "/api/analytics/trends",
+            params={"date_field": "date_of_event", "group_by": "year"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+
+    def test_get_trends_invalid_date_field(self, client):
+        """Test getting trends with invalid date_field."""
+        response = client.get(
+            "/api/analytics/trends",
+            params={"date_field": "invalid_field"}
+        )
+        assert response.status_code == 400
+
 
 class TestCompareManufacturers:
     """Tests for GET /api/analytics/compare endpoint."""

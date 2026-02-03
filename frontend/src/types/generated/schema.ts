@@ -2,7 +2,7 @@
  * AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
  *
  * Generated from UnifiedSchemaRegistry by generate_frontend_types.py
- * Generated at: 2026-02-01T01:15:09.813610
+ * Generated at: 2026-02-01T13:55:53.518109
  * Schema Version: 2.1
  *
  * This file provides type-safe access to schema definitions that match
