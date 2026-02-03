@@ -53,6 +53,100 @@ def glob_case_insensitive(directory: Path, pattern: str) -> List[Path]:
     return sorted(matches)
 
 
+def select_files_for_load(files: List[Path], file_type: str) -> List[Path]:
+    """
+    Select the correct subset of files to load for a given file type.
+
+    CRITICAL: This function fixes the bug where ALL Thru files were loaded
+    instead of just the latest one for cumulative file types.
+
+    File Type Behaviors:
+    - master, patient: Cumulative Thru files - only load LATEST Thru file
+    - device: Incremental Thru + annual files - load ALL (no overlap)
+    - text: Incremental annual files - load ALL (no overlap)
+
+    For all types:
+    - Load current file (e.g., mdrfoi.txt)
+    - Load Add file (e.g., mdrfoiAdd.txt)
+    - Load Change file LAST (e.g., mdrfoiChange.txt)
+
+    Args:
+        files: List of file paths matching the file type pattern
+        file_type: Type of file (master, device, patient, text, problem)
+
+    Returns:
+        Filtered and correctly ordered list of files to load
+    """
+    if not files:
+        return []
+
+    # Categorize files
+    thru_files = []
+    annual_files = []
+    current_files = []
+    add_files = []
+    change_files = []
+
+    for f in files:
+        name = f.name.lower()
+
+        if "thru" in name:
+            # Extract year from thru file
+            match = re.search(r'thru(\d{4})', name, re.IGNORECASE)
+            year = int(match.group(1)) if match else 0
+            thru_files.append((year, f))
+        elif "change" in name:
+            change_files.append(f)
+        elif "add" in name:
+            add_files.append(f)
+        elif re.search(r'\d{4}', name):
+            # Annual file with year
+            year_match = re.search(r'(\d{4})', name)
+            year = int(year_match.group(1)) if year_match else 0
+            annual_files.append((year, f))
+        else:
+            # Current file (no year in name)
+            current_files.append(f)
+
+    result = []
+
+    # Handle Thru files based on file type
+    if thru_files:
+        if file_type in ["master", "patient"]:
+            # CUMULATIVE: Only load the LATEST Thru file
+            # mdrfoiThru2025 contains ALL data through 2025 (supersedes Thru2023)
+            thru_files.sort(key=lambda x: x[0], reverse=True)
+            latest_thru = thru_files[0]
+            result.append(latest_thru[1])
+
+            # Log if we're skipping older Thru files
+            if len(thru_files) > 1:
+                skipped = [f[1].name for f in thru_files[1:]]
+                logger.info(
+                    f"Using latest cumulative file {latest_thru[1].name}, "
+                    f"skipping older: {skipped}"
+                )
+        else:
+            # INCREMENTAL (device, text): Load all Thru files in order
+            # foidevthru1997 is pre-1998 data, separate from annual files
+            thru_files.sort(key=lambda x: x[0])
+            result.extend([f[1] for f in thru_files])
+
+    # Add annual files in chronological order
+    if annual_files:
+        annual_files.sort(key=lambda x: x[0])
+        result.extend([f[1] for f in annual_files])
+
+    # Add current file (base file without year)
+    result.extend(current_files)
+
+    # Add files come BEFORE Change files (critical ordering)
+    result.extend(add_files)
+    result.extend(change_files)
+
+    return result
+
+
 @dataclass
 class LoadResult:
     """Result of a load operation."""
@@ -270,6 +364,128 @@ UNIQUE_CONSTRAINT_KEYS = {
     "problem": ["mdr_report_key", "problem_code"],
     "patient_problem": ["mdr_report_key", "problem_code"],
 }
+
+
+def validate_after_file_load(
+    conn: duckdb.DuckDBPyConnection,
+    file_type: str,
+    filename: str,
+    expected_min: int = 0,
+) -> tuple[bool, List[str]]:
+    """
+    Validate data integrity immediately after each file loads.
+
+    This provides real-time validation during loading rather than only at the end,
+    catching issues early before they compound.
+
+    Args:
+        conn: Database connection.
+        file_type: Type of file just loaded (master, device, patient, text, problem).
+        filename: Name of the file that was just loaded.
+        expected_min: Minimum expected record count (0 = no minimum check).
+
+    Returns:
+        Tuple of (passed, list_of_issues).
+    """
+    issues = []
+    table_map = {
+        "master": "master_events",
+        "device": "devices",
+        "patient": "patients",
+        "text": "mdr_text",
+        "problem": "device_problems",
+    }
+
+    table_name = table_map.get(file_type)
+    if not table_name:
+        return True, []
+
+    try:
+        # Check 1: Record count is reasonable
+        count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+        logger.info(f"Validation: {table_name} has {count:,} total records after loading {filename}")
+
+        if expected_min > 0 and count < expected_min:
+            issues.append(
+                f"CRITICAL: {table_name} has {count:,} records, expected at least {expected_min:,}"
+            )
+
+        if file_type == "master":
+            # Check 2: No NULL mdr_report_keys
+            null_keys = conn.execute(
+                "SELECT COUNT(*) FROM master_events WHERE mdr_report_key IS NULL"
+            ).fetchone()[0]
+            if null_keys > 0:
+                issues.append(f"CRITICAL: {null_keys:,} NULL mdr_report_keys in master_events")
+
+            # Check 3: Date range is reasonable (should span 1991-current)
+            date_range = conn.execute("""
+                SELECT MIN(date_received), MAX(date_received)
+                FROM master_events
+                WHERE date_received IS NOT NULL
+            """).fetchone()
+            if date_range[0] and date_range[1]:
+                logger.info(f"Validation: master_events date range: {date_range[0]} to {date_range[1]}")
+
+            # Check 4: Duplicate MDR keys (should be zero with proper dedup)
+            dup_count = conn.execute("""
+                SELECT COUNT(*) - COUNT(DISTINCT mdr_report_key) as duplicates
+                FROM master_events
+            """).fetchone()[0]
+            if dup_count > 0:
+                issues.append(f"WARNING: {dup_count:,} duplicate mdr_report_keys in master_events")
+
+        elif file_type == "patient":
+            # Check orphaned patients (no matching master record)
+            # Only check if master_events has data
+            master_count = conn.execute("SELECT COUNT(*) FROM master_events").fetchone()[0]
+            if master_count > 0:
+                orphans = conn.execute("""
+                    SELECT COUNT(*) FROM patients p
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM master_events m
+                        WHERE m.mdr_report_key = p.mdr_report_key
+                    )
+                """).fetchone()[0]
+                if orphans > 0:
+                    # This is a warning, not critical - some orphans expected
+                    logger.warning(f"Validation: {orphans:,} orphaned patient records (no matching master)")
+
+        elif file_type == "text":
+            # Check orphaned text records
+            master_count = conn.execute("SELECT COUNT(*) FROM master_events").fetchone()[0]
+            if master_count > 0:
+                orphans = conn.execute("""
+                    SELECT COUNT(*) FROM mdr_text t
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM master_events m
+                        WHERE m.mdr_report_key = t.mdr_report_key
+                    )
+                """).fetchone()[0]
+                if orphans > 0:
+                    logger.warning(f"Validation: {orphans:,} orphaned text records (no matching master)")
+
+        elif file_type == "device":
+            # Check device data quality
+            null_product_codes = conn.execute("""
+                SELECT COUNT(*) FROM devices
+                WHERE device_report_product_code IS NULL OR device_report_product_code = ''
+            """).fetchone()[0]
+            total_devices = conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0]
+            if total_devices > 0:
+                pct_null = (null_product_codes / total_devices) * 100
+                if pct_null > 10:  # More than 10% missing is concerning
+                    logger.warning(
+                        f"Validation: {null_product_codes:,} devices ({pct_null:.1f}%) "
+                        f"missing product code"
+                    )
+
+    except Exception as e:
+        issues.append(f"Validation error: {e}")
+        logger.error(f"Error during post-load validation: {e}")
+
+    passed = len([i for i in issues if i.startswith("CRITICAL")]) == 0
+    return passed, issues
 
 
 class MAUDELoader:
@@ -673,14 +889,27 @@ class MAUDELoader:
                             result.batch_insert_errors += 1
                             if len(result.error_messages) < 10:
                                 result.error_messages.append(f"Batch insert error: {batch_err}")
-                            # Try to recover by rolling back and starting new transaction
+                            # CRITICAL FIX: Proper transaction recovery
+                            # When a batch insert fails, the transaction is aborted.
+                            # We must rollback and start a NEW transaction to continue.
                             if transaction_started:
                                 try:
-                                    conn.execute("ROLLBACK")
+                                    # First try to rollback (may already be aborted)
+                                    try:
+                                        conn.execute("ROLLBACK")
+                                    except Exception:
+                                        pass  # Transaction may already be aborted
+                                    # Start fresh transaction for remaining batches
                                     conn.execute("BEGIN TRANSACTION")
                                     batches_in_current_transaction = 0
-                                except Exception:
-                                    pass
+                                    logger.warning(
+                                        f"Recovered from batch error, starting new transaction. "
+                                        f"Error was: {batch_err}"
+                                    )
+                                except Exception as recovery_err:
+                                    logger.error(f"Failed to recover transaction: {recovery_err}")
+                                    # Mark transaction as not started to avoid commit attempts
+                                    transaction_started = False
                         batch = []
 
                         # Incremental commit to prevent OOM on large files
@@ -688,12 +917,25 @@ class MAUDELoader:
                         if (self.commit_every_n_batches > 0 and
                             batches_in_current_transaction >= self.commit_every_n_batches and
                             transaction_started):
-                            conn.execute("COMMIT")
-                            conn.execute("BEGIN TRANSACTION")
-                            batches_in_current_transaction = 0
-                            logger.debug(
-                                f"Incremental commit after {result.records_loaded:,} records"
-                            )
+                            try:
+                                conn.execute("COMMIT")
+                                conn.execute("BEGIN TRANSACTION")
+                                batches_in_current_transaction = 0
+                                logger.debug(
+                                    f"Incremental commit after {result.records_loaded:,} records"
+                                )
+                            except Exception as commit_err:
+                                logger.error(f"Incremental commit failed: {commit_err}")
+                                # Try to recover
+                                try:
+                                    conn.execute("ROLLBACK")
+                                except Exception:
+                                    pass
+                                try:
+                                    conn.execute("BEGIN TRANSACTION")
+                                    batches_in_current_transaction = 0
+                                except Exception:
+                                    transaction_started = False
 
                 except Exception as e:
                     result.records_errors += 1
@@ -762,6 +1004,19 @@ class MAUDELoader:
 
             # Update file audit table
             self._update_file_audit(conn, result, load_started, "COMPLETED")
+
+            # Real-time validation after file load
+            # This catches data integrity issues immediately rather than at the end
+            validation_passed, validation_issues = validate_after_file_load(
+                conn, file_type, filepath.name, expected_min=0
+            )
+            if validation_issues:
+                for issue in validation_issues:
+                    if issue.startswith("CRITICAL"):
+                        logger.error(f"Post-load validation: {issue}")
+                        result.error_messages.append(issue)
+                    else:
+                        logger.warning(f"Post-load validation: {issue}")
 
         except Exception as e:
             # Rollback transaction on failure
@@ -1004,7 +1259,11 @@ class MAUDELoader:
                     # Also include device{year}.txt files (case-insensitive)
                     device_year_files = glob_case_insensitive(data_dir, "device*.txt")
                     device_year_files = [f for f in device_year_files if "problem" not in f.name.lower()]
-                    files = sorted(set(files + device_year_files))
+                    files = list(set(files + device_year_files))
+
+                # CRITICAL FIX: Apply file selection logic
+                # This fixes the bug where ALL Thru files were loaded instead of latest
+                files = select_files_for_load(files, file_type)
 
                 # For ASR, exclude the asr_ppc files
                 if file_type == "asr":

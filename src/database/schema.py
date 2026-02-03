@@ -287,7 +287,9 @@ CREATE TABLE IF NOT EXISTS devices (
     -- CHECK constraints for data validation
     CONSTRAINT chk_devices_implant_flag CHECK (implant_flag IS NULL OR implant_flag IN ('Y', 'N', '')),
     CONSTRAINT chk_devices_removed_flag CHECK (date_removed_flag IS NULL OR date_removed_flag IN ('Y', 'N', '')),
-    CONSTRAINT chk_devices_seq_num CHECK (device_sequence_number IS NULL OR device_sequence_number > 0)
+    -- CRITICAL FIX: Allow device_sequence_number = 0 (valid in FDA data)
+    -- Previous constraint (> 0) was rejecting valid records
+    CONSTRAINT chk_devices_seq_num CHECK (device_sequence_number IS NULL OR device_sequence_number >= 0)
 )
 """
 

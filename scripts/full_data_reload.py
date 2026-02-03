@@ -27,6 +27,7 @@ Usage:
 """
 
 import sys
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -56,7 +57,6 @@ def get_file_sort_key(filepath: Path) -> tuple:
 
     This ensures Add files come before Change files.
     """
-    import re
     name = filepath.name.lower()
 
     # Priority 1: Thru files (historical aggregates)
@@ -85,12 +85,113 @@ def get_file_sort_key(filepath: Path) -> tuple:
     return (3, 0, name)
 
 
+def select_files_for_load(files: List[Path], file_type: str) -> List[Path]:
+    """
+    Select the correct subset of files to load for a given file type.
+
+    CRITICAL: This function fixes the bug where ALL Thru files were loaded
+    instead of just the latest one for cumulative file types.
+
+    File Type Behaviors:
+    - master, patient: Cumulative Thru files - only load LATEST Thru file
+    - device: Incremental Thru + annual files - load ALL (no overlap)
+    - text: Incremental annual files - load ALL (no overlap)
+
+    For all types:
+    - Load current file (e.g., mdrfoi.txt)
+    - Load Add file (e.g., mdrfoiAdd.txt)
+    - Load Change file LAST (e.g., mdrfoiChange.txt)
+
+    Args:
+        files: List of file paths matching the file type pattern
+        file_type: Type of file (master, device, patient, text, problem)
+
+    Returns:
+        Filtered and correctly ordered list of files to load
+    """
+    import re
+
+    if not files:
+        return []
+
+    # Categorize files
+    thru_files = []
+    annual_files = []
+    current_files = []
+    add_files = []
+    change_files = []
+
+    for f in files:
+        name = f.name.lower()
+
+        if "thru" in name:
+            # Extract year from thru file
+            match = re.search(r'thru(\d{4})', name, re.IGNORECASE)
+            year = int(match.group(1)) if match else 0
+            thru_files.append((year, f))
+        elif "change" in name:
+            change_files.append(f)
+        elif "add" in name:
+            add_files.append(f)
+        elif re.search(r'\d{4}', name):
+            # Annual file with year
+            year_match = re.search(r'(\d{4})', name)
+            year = int(year_match.group(1)) if year_match else 0
+            annual_files.append((year, f))
+        else:
+            # Current file (no year in name)
+            current_files.append(f)
+
+    result = []
+
+    # Handle Thru files based on file type
+    if thru_files:
+        if file_type in ["master", "patient"]:
+            # CUMULATIVE: Only load the LATEST Thru file
+            # mdrfoiThru2025 contains ALL data through 2025 (supersedes Thru2023)
+            thru_files.sort(key=lambda x: x[0], reverse=True)
+            latest_thru = thru_files[0]
+            result.append(latest_thru[1])
+
+            # Log if we're skipping older Thru files
+            if len(thru_files) > 1:
+                skipped = [f[1].name for f in thru_files[1:]]
+                logger.info(
+                    f"Using latest cumulative file {latest_thru[1].name}, "
+                    f"skipping older: {skipped}"
+                )
+        else:
+            # INCREMENTAL (device, text): Load all Thru files in order
+            # foidevthru1997 is pre-1998 data, separate from annual files
+            thru_files.sort(key=lambda x: x[0])
+            result.extend([f[1] for f in thru_files])
+
+    # Add annual files in chronological order
+    if annual_files:
+        annual_files.sort(key=lambda x: x[0])
+        result.extend([f[1] for f in annual_files])
+
+    # Add current file (base file without year)
+    result.extend(current_files)
+
+    # Add files come BEFORE Change files (critical ordering)
+    result.extend(add_files)
+    result.extend(change_files)
+
+    return result
+
+
 def get_files_by_type(data_dir: Path, file_types: List[str]) -> Dict[str, List[Path]]:
     """
-    Collect files to process by type, sorted in proper loading order.
+    Collect files to process by type, with correct file selection and ordering.
+
+    CRITICAL FIX: This function now uses select_files_for_load() to:
+    1. For cumulative types (master, patient): Select ONLY the latest Thru file
+    2. For incremental types (device, text): Load ALL files in chronological order
+    3. Always ensure Add files load BEFORE Change files
 
     Loading order per type:
-    1. Thru files (historical)
+    1. Latest Thru file (for cumulative) OR all Thru files (for incremental)
     2. Annual files (by year ascending)
     3. Current year base file
     4. Add files (new records)
@@ -118,10 +219,16 @@ def get_files_by_type(data_dir: Path, file_types: List[str]) -> Dict[str, List[P
         if ftype == "patient":
             files = [f for f in files if "problem" not in f.name.lower()]
 
-        # Remove duplicates and sort by proper loading order
-        files = sorted(set(files), key=get_file_sort_key)
+        # Remove duplicates
+        files = list(set(files))
+
+        # CRITICAL: Apply file selection logic to pick correct files
+        # This fixes the bug where ALL Thru files were loaded
+        files = select_files_for_load(files, ftype)
+
         if files:
             files_by_type[ftype] = files
+            logger.info(f"Selected {len(files)} {ftype} files for loading")
 
     return files_by_type
 

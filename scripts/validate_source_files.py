@@ -55,6 +55,8 @@ class ValidationSummary:
 
 
 # Expected file patterns by type
+# NOTE: For cumulative file types (master, patient), only the LATEST Thru file
+# should be expected. Older Thru files are superseded and should NOT be loaded.
 EXPECTED_FILES = {
     "device": {
         "historical": ["foidevthru1997.txt"],
@@ -65,18 +67,23 @@ EXPECTED_FILES = {
         "change": ["devicechange.txt"],
     },
     "master": {
-        "historical": ["mdrfoiThru2023.txt", "mdrfoiThru2025.txt"],
+        # CRITICAL: Only expect the LATEST Thru file
+        # mdrfoiThru2025 contains ALL data through 2025, superseding Thru2023
+        # Removed mdrfoiThru2023.txt - it should NOT be loaded
+        "historical": ["mdrfoiThru2025.txt"],
         "current": ["mdrfoi.txt"],
         "add": ["mdrfoiAdd.txt"],
         "change": ["mdrfoiChange.txt"],
     },
     "patient": {
+        # Only expect the LATEST Thru file
         "historical": ["patientThru2025.txt"],
         "current": ["patient.txt"],
         "add": ["patientAdd.txt"],
         "change": ["patientChange.txt"],
     },
     "text": {
+        # Text files are INCREMENTAL (not cumulative), so load ALL
         "historical": [f"foitext{year}.txt" for year in range(1996, 2026)],
         "legacy": ["foitextthru1995.txt"],
         "current": ["foitext.txt"],
