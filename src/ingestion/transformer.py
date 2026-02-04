@@ -273,7 +273,8 @@ class DataTransformer:
                 transformed["patient_sex"] = "M"
             elif sex in ["F", "FEMALE"]:
                 transformed["patient_sex"] = "F"
-            elif sex in ["U", "UNKNOWN", ""]:
+            else:
+                # Normalize all other values (OTHER, X, N/A, UNK, etc.) to Unknown
                 transformed["patient_sex"] = "U"
 
         # Parse outcome codes (semicolon-separated like "D;H;R")

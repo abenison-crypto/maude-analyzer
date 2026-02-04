@@ -311,9 +311,9 @@ CREATE TABLE IF NOT EXISTS patients (
     -- Date
     date_received DATE,
 
-    -- Sequence Numbers
-    sequence_number_treatment INTEGER,
-    sequence_number_outcome INTEGER,
+    -- Sequence Numbers (BIGINT for large FDA codes like 8000041827)
+    sequence_number_treatment BIGINT,
+    sequence_number_outcome BIGINT,
 
     -- Patient Demographics (NEW FDA fields)
     patient_age VARCHAR,
@@ -355,9 +355,12 @@ CREATE TABLE IF NOT EXISTS patients (
     source_file VARCHAR,
 
     -- CHECK constraints for data validation
+    -- NOTE: Sex validation allows empty string for unknown/unspecified
     CONSTRAINT chk_patients_sex CHECK (patient_sex IS NULL OR patient_sex IN ('M', 'F', 'U', 'Male', 'Female', 'Unknown', '')),
-    CONSTRAINT chk_patients_age CHECK (patient_age_numeric IS NULL OR (patient_age_numeric >= 0 AND patient_age_numeric <= 200)),
-    CONSTRAINT chk_patients_seq_num CHECK (patient_sequence_number IS NULL OR patient_sequence_number > 0)
+    -- NOTE: Age validation removed upper limit - FDA data may have special codes/values
+    CONSTRAINT chk_patients_age CHECK (patient_age_numeric IS NULL OR patient_age_numeric >= 0),
+    -- NOTE: Sequence number allows 0 for valid records
+    CONSTRAINT chk_patients_seq_num CHECK (patient_sequence_number IS NULL OR patient_sequence_number >= 0)
 )
 """
 

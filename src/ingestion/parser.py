@@ -683,16 +683,35 @@ class MAUDEParser:
             elif file_type == "device":
                 filter_column = "DEVICE_REPORT_PRODUCT_CODE"
 
+        # File types known to have embedded newlines in text fields
+        EMBEDDED_NEWLINE_FILE_TYPES = {"master", "text", "patient"}
+
         try:
             # Use detected encoding from schema (important for older files)
             file_encoding = schema.encoding if schema else self.encoding
-            with open(filepath, "r", encoding=file_encoding, errors="replace") as f:
+
+            # Preprocess files that may have embedded newlines
+            # This rejoins split records before CSV parsing
+            if file_type in EMBEDDED_NEWLINE_FILE_TYPES:
+                preprocessed_lines, rejoin_count = preprocess_file_for_embedded_newlines(
+                    filepath, encoding=file_encoding
+                )
+                if rejoin_count > 0:
+                    logger.info(f"Rejoined {rejoin_count} split records in {filepath.name}")
+
                 # IMPORTANT: Use QUOTE_NONE to disable quote handling
                 # FDA MAUDE data contains literal quote characters (e.g., O"REILLY)
                 # that are NOT field delimiters. Using quotechar='"' causes the CSV
                 # reader to swallow millions of records when an unmatched quote appears.
-                reader = csv.reader(f, delimiter="|", quoting=csv.QUOTE_NONE)
+                reader = csv.reader(preprocessed_lines, delimiter="|", quoting=csv.QUOTE_NONE)
+            else:
+                # For other file types, read directly from file
+                # We need to keep file open for the generator, so use a different approach
+                preprocessed_lines = None
+                file_handle = open(filepath, "r", encoding=file_encoding, errors="replace")
+                reader = csv.reader(file_handle, delimiter="|", quoting=csv.QUOTE_NONE)
 
+            try:
                 for line_num, row in enumerate(reader, 1):
                     result.total_rows += 1
 
@@ -728,6 +747,10 @@ class MAUDEParser:
                         result.error_rows += 1
                         if len(result.errors) < 100:
                             result.errors.append((line_num, str(e)))
+            finally:
+                # Close file handle if we opened one
+                if preprocessed_lines is None:
+                    file_handle.close()
 
         except Exception as e:
             logger.error(f"Error reading file {filepath}: {e}")

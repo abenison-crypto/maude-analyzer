@@ -889,26 +889,42 @@ class MAUDELoader:
                             result.batch_insert_errors += 1
                             if len(result.error_messages) < 10:
                                 result.error_messages.append(f"Batch insert error: {batch_err}")
-                            # CRITICAL FIX: Proper transaction recovery
-                            # When a batch insert fails, the transaction is aborted.
-                            # We must rollback and start a NEW transaction to continue.
+
+                            # CRITICAL FIX: Proper transaction recovery for DuckDB
+                            # DuckDB requires explicit rollback before any new operations
                             if transaction_started:
+                                # Rollback the aborted transaction
                                 try:
-                                    # First try to rollback (may already be aborted)
+                                    conn.execute("ROLLBACK")
+                                except Exception:
+                                    pass  # May already be rolled back
+
+                                # Try single-record inserts to salvage what we can
+                                # This identifies and skips only the bad records
+                                salvaged = 0
+                                skipped = 0
+                                for record in batch:
                                     try:
-                                        conn.execute("ROLLBACK")
+                                        # Use autocommit for single records
+                                        self._insert_batch(conn, file_type, [record])
+                                        salvaged += 1
                                     except Exception:
-                                        pass  # Transaction may already be aborted
-                                    # Start fresh transaction for remaining batches
+                                        skipped += 1
+                                        result.records_errors += 1
+
+                                if salvaged > 0:
+                                    result.records_loaded += salvaged
+                                    logger.warning(
+                                        f"Batch failed, salvaged {salvaged} of {len(batch)} "
+                                        f"records via single-insert ({skipped} skipped)"
+                                    )
+
+                                # Restart transaction for remaining batches
+                                try:
                                     conn.execute("BEGIN TRANSACTION")
                                     batches_in_current_transaction = 0
-                                    logger.warning(
-                                        f"Recovered from batch error, starting new transaction. "
-                                        f"Error was: {batch_err}"
-                                    )
                                 except Exception as recovery_err:
-                                    logger.error(f"Failed to recover transaction: {recovery_err}")
-                                    # Mark transaction as not started to avoid commit attempts
+                                    logger.error(f"Failed to restart transaction: {recovery_err}")
                                     transaction_started = False
                         batch = []
 
@@ -952,6 +968,29 @@ class MAUDELoader:
                     result.batch_insert_errors += 1
                     if len(result.error_messages) < 10:
                         result.error_messages.append(f"Final batch insert error: {batch_err}")
+
+                    # Same recovery logic for final batch
+                    if transaction_started:
+                        try:
+                            conn.execute("ROLLBACK")
+                        except Exception:
+                            pass
+
+                        # Try single-record inserts to salvage what we can
+                        salvaged = 0
+                        for record in batch:
+                            try:
+                                self._insert_batch(conn, file_type, [record])
+                                salvaged += 1
+                            except Exception:
+                                result.records_errors += 1
+
+                        if salvaged > 0:
+                            result.records_loaded += salvaged
+                            logger.warning(
+                                f"Final batch failed, salvaged {salvaged} of {len(batch)} records"
+                            )
+                        transaction_started = False  # Transaction was rolled back
 
             # Commit transaction on success
             if self.enable_transaction_safety and transaction_started:
@@ -1177,21 +1216,12 @@ class MAUDELoader:
             conn.execute(f"{insert_cmd} {table_name} ({col_names}) SELECT {select_cols} FROM df")
             return len(df)
         except Exception as e:
-            logger.error(f"Error inserting batch: {e}")
-            # Log first few records for debugging
+            # Log error details for debugging
             if len(df) > 0:
-                logger.error(f"First record mdr_report_key: {df.iloc[0].get('mdr_report_key', 'N/A')}")
-                logger.error(f"First record columns: {list(df.columns[:5])}")
-            # Fall back to slower method with INSERT OR REPLACE
-            try:
-                placeholders = ", ".join(["?" for _ in columns])
-                sql = f"INSERT OR REPLACE INTO {table_name} ({col_names}) VALUES ({placeholders})"
-                values = [tuple(row[col] for col in columns) for row in rows]
-                conn.executemany(sql, values)
-                return len(values)
-            except Exception as e2:
-                logger.error(f"Fallback insert also failed: {e2}")
-                return 0
+                logger.debug(f"Batch insert error: {e}")
+                logger.debug(f"First record mdr_report_key: {df.iloc[0].get('mdr_report_key', 'N/A')}")
+            # Re-raise to allow caller to handle (single-record recovery)
+            raise
 
     def _get_table_name(self, file_type: str) -> str:
         """Get database table name for file type."""
