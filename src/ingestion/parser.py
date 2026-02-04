@@ -99,9 +99,12 @@ def preprocess_file_for_embedded_newlines(
             if not line.strip():
                 continue
 
-            # Valid data lines start with a digit (MDR_REPORT_KEY)
+            # Valid data lines have a numeric MDR_REPORT_KEY as the first field
             # Orphan lines are continuations of the previous record's text field
-            if line and line[0].isdigit():
+            # MDR keys are exactly 8 digits; other numeric values (phone numbers,
+            # zip codes) should be treated as orphan line continuations
+            first_field = line.split('|', 1)[0]
+            if first_field.isdigit() and len(first_field) == 8:
                 # This is a new record - save the current one and start fresh
                 if current_line:
                     rejoined_lines.append(current_line)
@@ -158,7 +161,9 @@ def count_physical_lines(
                 total_lines += 1
                 if i == 0:
                     continue  # Skip header
-                if line and line[0].isdigit():
+                # Check if first field is a valid MDR_REPORT_KEY (exactly 8 digits)
+                first_field = line.split('|', 1)[0]
+                if first_field.isdigit() and len(first_field) == 8:
                     valid_data_lines += 1
                 elif line.strip():
                     orphan_lines += 1
