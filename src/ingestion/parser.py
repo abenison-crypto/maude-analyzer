@@ -70,65 +70,118 @@ def preprocess_file_for_embedded_newlines(
 
     FDA MAUDE narrative text fields can contain embedded newlines, which cause
     records to be split across multiple physical lines. This function detects
-    orphan lines (lines that don't start with a digit = MDR_REPORT_KEY) and
+    orphan lines (lines that don't start with a valid MDR_REPORT_KEY) and
     rejoins them with the previous record.
+
+    STREAMING VERSION: Writes to a temp file to avoid loading entire file
+    into memory. Returns an iterator over the preprocessed lines.
 
     Args:
         filepath: Path to the file.
         encoding: File encoding.
 
     Returns:
-        Tuple of (list of rejoined lines, count of rejoined records).
+        Tuple of (iterable of rejoined lines, count of rejoined records).
     """
-    rejoined_lines = []
+    import tempfile
+
     rejoin_count = 0
+    temp_file = tempfile.NamedTemporaryFile(
+        mode='w',
+        encoding=encoding,
+        delete=False,
+        suffix='.preprocessed.txt'
+    )
+    temp_path = temp_file.name
 
     try:
         with open(filepath, "r", encoding=encoding, errors="replace") as f:
-            lines = f.readlines()
+            current_line = None
 
-        if not lines:
-            return [], 0
+            for line_num, line in enumerate(f):
+                line = line.rstrip("\n\r")
 
-        current_line = lines[0].rstrip("\n\r")  # Keep header
+                # First line is header
+                if line_num == 0:
+                    current_line = line
+                    continue
 
-        for i, line in enumerate(lines[1:], start=1):
-            line = line.rstrip("\n\r")
+                # Skip empty lines
+                if not line.strip():
+                    continue
 
-            # Skip empty lines
-            if not line.strip():
-                continue
+                # Valid data lines have a numeric MDR_REPORT_KEY as the first field
+                # MDR keys are exactly 8 digits; other numeric values (phone numbers,
+                # zip codes) should be treated as orphan line continuations
+                first_field = line.split('|', 1)[0]
+                if first_field.isdigit() and len(first_field) == 8:
+                    # This is a new record - write the current one and start fresh
+                    if current_line is not None:
+                        temp_file.write(current_line + "\n")
+                    current_line = line
+                else:
+                    # This is an orphan line - append to current record with a space
+                    current_line = current_line + " " + line.lstrip()
+                    rejoin_count += 1
 
-            # Valid data lines have a numeric MDR_REPORT_KEY as the first field
-            # Orphan lines are continuations of the previous record's text field
-            # MDR keys are exactly 8 digits; other numeric values (phone numbers,
-            # zip codes) should be treated as orphan line continuations
-            first_field = line.split('|', 1)[0]
-            if first_field.isdigit() and len(first_field) == 8:
-                # This is a new record - save the current one and start fresh
-                if current_line:
-                    rejoined_lines.append(current_line)
-                current_line = line
-            else:
-                # This is an orphan line - append to current record with a space
-                # Replace the embedded newline with a space to preserve readability
-                current_line = current_line + " " + line.lstrip()
-                rejoin_count += 1
+            # Don't forget the last record
+            if current_line is not None:
+                temp_file.write(current_line + "\n")
 
-        # Don't forget the last record
-        if current_line:
-            rejoined_lines.append(current_line)
+        temp_file.close()
+
+        if rejoin_count > 0:
+            logger.info(
+                f"Preprocessed {filepath.name}: rejoined {rejoin_count} embedded newline fragments"
+            )
+
+        # Return an iterator that reads from the temp file
+        # The caller should handle cleanup
+        return PreprocessedFileIterator(temp_path, encoding), rejoin_count
 
     except Exception as e:
         logger.error(f"Error preprocessing {filepath} for embedded newlines: {e}")
+        temp_file.close()
+        try:
+            Path(temp_path).unlink()
+        except:
+            pass
         return [], 0
 
-    if rejoin_count > 0:
-        logger.info(
-            f"Preprocessed {filepath.name}: rejoined {rejoin_count} embedded newline fragments"
-        )
 
-    return rejoined_lines, rejoin_count
+class PreprocessedFileIterator:
+    """Iterator that reads from a preprocessed temp file and cleans up when done."""
+
+    def __init__(self, filepath: str, encoding: str = "latin-1"):
+        self.filepath = filepath
+        self.encoding = encoding
+        self._file = None
+
+    def __iter__(self):
+        self._file = open(self.filepath, "r", encoding=self.encoding)
+        return self
+
+    def __next__(self):
+        if self._file is None:
+            raise StopIteration
+        line = self._file.readline()
+        if line:
+            return line.rstrip("\n\r")
+        else:
+            self._cleanup()
+            raise StopIteration
+
+    def _cleanup(self):
+        if self._file:
+            self._file.close()
+            self._file = None
+        try:
+            Path(self.filepath).unlink()
+        except:
+            pass
+
+    def __del__(self):
+        self._cleanup()
 
 
 def count_physical_lines(

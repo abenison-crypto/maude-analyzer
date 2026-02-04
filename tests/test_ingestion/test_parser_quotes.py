@@ -234,7 +234,10 @@ and continues here
             temp_path = Path(f.name)
 
         try:
-            lines, rejoin_count = preprocess_file_for_embedded_newlines(temp_path)
+            lines_iter, rejoin_count = preprocess_file_for_embedded_newlines(temp_path)
+
+            # Convert iterator to list for testing
+            lines = list(lines_iter)
 
             # Should have header + 2 records
             assert len(lines) == 3, f"Expected 3 lines after preprocessing, got {len(lines)}"
