@@ -689,7 +689,7 @@ class MAUDEParser:
                 filter_column = "DEVICE_REPORT_PRODUCT_CODE"
 
         # File types known to have embedded newlines in text fields
-        EMBEDDED_NEWLINE_FILE_TYPES = {"master", "text", "patient"}
+        EMBEDDED_NEWLINE_FILE_TYPES = {"master", "text", "patient", "device"}
 
         try:
             # Use detected encoding from schema (important for older files)
