@@ -86,9 +86,11 @@ def preprocess_file_for_embedded_newlines(
     import tempfile
 
     rejoin_count = 0
+    # Use utf-8 for temp file to handle any characters from error replacement
     temp_file = tempfile.NamedTemporaryFile(
         mode='w',
-        encoding=encoding,
+        encoding='utf-8',
+        errors='replace',
         delete=False,
         suffix='.preprocessed.txt'
     )
@@ -136,9 +138,9 @@ def preprocess_file_for_embedded_newlines(
                 f"Preprocessed {filepath.name}: rejoined {rejoin_count} embedded newline fragments"
             )
 
-        # Return an iterator that reads from the temp file
+        # Return an iterator that reads from the temp file (always utf-8)
         # The caller should handle cleanup
-        return PreprocessedFileIterator(temp_path, encoding), rejoin_count
+        return PreprocessedFileIterator(temp_path, 'utf-8'), rejoin_count
 
     except Exception as e:
         logger.error(f"Error preprocessing {filepath} for embedded newlines: {e}")
