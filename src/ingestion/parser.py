@@ -111,10 +111,11 @@ def preprocess_file_for_embedded_newlines(
                     continue
 
                 # Valid data lines have a numeric MDR_REPORT_KEY as the first field
-                # MDR keys are exactly 8 digits; other numeric values (phone numbers,
-                # zip codes) should be treated as orphan line continuations
+                # MDR keys are 5-8 digits (older records have fewer digits)
+                # Phone numbers (10 digits) and zip codes (5 digits) could be confused,
+                # but zip codes followed by non-digit chars are caught by isdigit()
                 first_field = line.split('|', 1)[0]
-                if first_field.isdigit() and len(first_field) == 8:
+                if first_field.isdigit() and 5 <= len(first_field) <= 8:
                     # This is a new record - write the current one and start fresh
                     if current_line is not None:
                         temp_file.write(current_line + "\n")
@@ -214,9 +215,9 @@ def count_physical_lines(
                 total_lines += 1
                 if i == 0:
                     continue  # Skip header
-                # Check if first field is a valid MDR_REPORT_KEY (exactly 8 digits)
+                # Check if first field is a valid MDR_REPORT_KEY (5-8 digits)
                 first_field = line.split('|', 1)[0]
-                if first_field.isdigit() and len(first_field) == 8:
+                if first_field.isdigit() and 5 <= len(first_field) <= 8:
                     valid_data_lines += 1
                 elif line.strip():
                     orphan_lines += 1
