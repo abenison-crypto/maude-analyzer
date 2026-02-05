@@ -361,8 +361,8 @@ UNIQUE_CONSTRAINT_KEYS = {
     "device": ["mdr_report_key", "device_sequence_number"],
     "patient": ["mdr_report_key", "patient_sequence_number"],
     "text": ["mdr_report_key", "mdr_text_key"],
-    "problem": ["mdr_report_key", "problem_code"],
-    "patient_problem": ["mdr_report_key", "problem_code"],
+    "problem": ["mdr_report_key", "device_problem_code"],
+    "patient_problem": ["mdr_report_key", "patient_problem_code"],
 }
 
 
@@ -1180,7 +1180,12 @@ class MAUDELoader:
             # 1. Child tables don't have unique constraints on (mdr_report_key + sequence)
             # 2. Re-loading the same file would create duplicate rows
             # 3. Weekly files may overlap with previously loaded data
-            if file_type in ("device", "patient", "text", "problem"):
+            #
+            # NOTE: "problem" is excluded because foidevproblem.txt contains multiple
+            # rows per MDR key (one per problem code). The same MDR key can appear in
+            # different batches, so DELETE-before-INSERT would delete problem codes
+            # from earlier batches. Instead, we just INSERT for problem files.
+            if file_type in ("device", "patient", "text"):
                 # Get unique MDR keys from this batch
                 mdr_keys = list(set(
                     r.get("mdr_report_key")
