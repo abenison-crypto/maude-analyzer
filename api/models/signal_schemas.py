@@ -100,6 +100,13 @@ class SignalRequest(BaseModel):
     product_codes: Optional[list[str]] = None
     event_types: Optional[list[str]] = None
 
+    # Device filters
+    brand_names: Optional[list[str]] = None
+    generic_names: Optional[list[str]] = None
+    device_manufacturers: Optional[list[str]] = None
+    model_numbers: Optional[list[str]] = None
+    implant_flag: Optional[str] = None  # 'Y', 'N', or None
+
     # Comparison population for PRR/ROR/EBGM
     comparison_population: ComparisonPopulation = Field(
         default=ComparisonPopulation.ALL,

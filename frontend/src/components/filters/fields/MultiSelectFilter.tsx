@@ -54,7 +54,6 @@ export default function MultiSelectFilter({
     }
 
     debounceRef.current = setTimeout(async () => {
-      setIsLoading(true)
       try {
         const results = await fetchOptions(term)
         setOptions(results)
@@ -70,6 +69,8 @@ export default function MultiSelectFilter({
   // Initial load and search changes
   useEffect(() => {
     if (isOpen) {
+      // Set loading immediately when dropdown opens (before debounce delay)
+      setIsLoading(true)
       handleSearch(search)
     }
   }, [search, isOpen, handleSearch])

@@ -65,7 +65,26 @@ export default function AdvancedSignalsPanel() {
     return filters.eventTypes.length > 0 ? filters.eventTypes : undefined
   }, [filters.eventTypes])
 
-  // Query - include active entity groups
+  // Device filters from context
+  const brandNames = useMemo(() => {
+    return filters.brandNames.length > 0 ? filters.brandNames : undefined
+  }, [filters.brandNames])
+
+  const genericNames = useMemo(() => {
+    return filters.genericNames.length > 0 ? filters.genericNames : undefined
+  }, [filters.genericNames])
+
+  const deviceManufacturers = useMemo(() => {
+    return filters.deviceManufacturers.length > 0 ? filters.deviceManufacturers : undefined
+  }, [filters.deviceManufacturers])
+
+  const modelNumbers = useMemo(() => {
+    return filters.modelNumbers.length > 0 ? filters.modelNumbers : undefined
+  }, [filters.modelNumbers])
+
+  const implantFlag = filters.implantFlag || undefined
+
+  // Query - include active entity groups and device filters
   const { data, isLoading, error } = useAdvancedSignals({
     methods,
     timeConfig,
@@ -73,6 +92,11 @@ export default function AdvancedSignalsPanel() {
     parentValue,
     productCodes,
     eventTypes,
+    brandNames,
+    genericNames,
+    deviceManufacturers,
+    modelNumbers,
+    implantFlag,
     activeGroups: queryGroups.length > 0 ? queryGroups : undefined,
     minEvents,
     limit: 20,

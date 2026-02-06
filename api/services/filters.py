@@ -46,7 +46,13 @@ def build_filter_clause(
 
     if manufacturers:
         placeholders = ", ".join(["?" for _ in manufacturers])
-        conditions.append(f"{table_alias}.manufacturer_clean IN ({placeholders})")
+        conditions.append(f"""
+            EXISTS (
+                SELECT 1 FROM devices d
+                WHERE d.mdr_report_key = {table_alias}.mdr_report_key
+                AND d.manufacturer_d_name IN ({placeholders})
+            )
+        """)
         params.extend(manufacturers)
 
     if product_codes:

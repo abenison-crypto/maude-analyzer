@@ -38,6 +38,12 @@ export interface SignalRequest {
   parent_value?: string | null
   product_codes?: string[]
   event_types?: string[]
+  // Device filters
+  brand_names?: string[]
+  generic_names?: string[]
+  device_manufacturers?: string[]
+  model_numbers?: string[]
+  implant_flag?: 'Y' | 'N' | ''
   comparison_population?: ComparisonPopulation
   comparison_filters?: Record<string, unknown>
   active_groups?: ActiveEntityGroup[]

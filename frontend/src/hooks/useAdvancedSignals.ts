@@ -15,6 +15,12 @@ interface UseAdvancedSignalsOptions {
   parentValue?: string | null
   productCodes?: string[]
   eventTypes?: string[]
+  // Device filters
+  brandNames?: string[]
+  genericNames?: string[]
+  deviceManufacturers?: string[]
+  modelNumbers?: string[]
+  implantFlag?: 'Y' | 'N' | ''
   activeGroups?: ActiveEntityGroup[]
   minEvents?: number
   limit?: number
@@ -28,6 +34,11 @@ export function useAdvancedSignals({
   parentValue,
   productCodes,
   eventTypes,
+  brandNames,
+  genericNames,
+  deviceManufacturers,
+  modelNumbers,
+  implantFlag,
   activeGroups,
   minEvents = 10,
   limit = 20,
@@ -40,6 +51,11 @@ export function useAdvancedSignals({
     parent_value: parentValue,
     product_codes: productCodes,
     event_types: eventTypes,
+    brand_names: brandNames,
+    generic_names: genericNames,
+    device_manufacturers: deviceManufacturers,
+    model_numbers: modelNumbers,
+    implant_flag: implantFlag || undefined,
     active_groups: activeGroups,
     min_events: minEvents,
     limit,
@@ -54,6 +70,11 @@ export function useAdvancedSignals({
       parentValue,
       productCodes,
       eventTypes,
+      brandNames,
+      genericNames,
+      deviceManufacturers,
+      modelNumbers,
+      implantFlag,
       activeGroups,
       minEvents,
       limit,

@@ -310,6 +310,33 @@ class SignalDetectionService:
             conditions.append(f"m.event_type IN ({placeholders})")
             params.extend(db_types)
 
+        # Device filters
+        if request.brand_names:
+            placeholders = ", ".join(["?" for _ in request.brand_names])
+            conditions.append(f"d.brand_name IN ({placeholders})")
+            params.extend(request.brand_names)
+
+        if request.generic_names:
+            generic_conditions = []
+            for name in request.generic_names:
+                generic_conditions.append("d.generic_name ILIKE ?")
+                params.append(f"%{name}%")
+            conditions.append(f"({' OR '.join(generic_conditions)})")
+
+        if request.device_manufacturers:
+            placeholders = ", ".join(["?" for _ in request.device_manufacturers])
+            conditions.append(f"d.manufacturer_d_name IN ({placeholders})")
+            params.extend(request.device_manufacturers)
+
+        if request.model_numbers:
+            placeholders = ", ".join(["?" for _ in request.model_numbers])
+            conditions.append(f"d.model_number IN ({placeholders})")
+            params.extend(request.model_numbers)
+
+        if request.implant_flag in ('Y', 'N'):
+            conditions.append("d.implant_flag = ?")
+            params.append(request.implant_flag)
+
         where_clause = " AND ".join(conditions)
 
         # Build query with monthly breakdown for z-score calculation
