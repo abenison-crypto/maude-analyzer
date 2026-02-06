@@ -308,6 +308,67 @@ class SchemaAwareQueryBuilder:
 
         return self.where_in(column, db_codes, table_alias)
 
+    def where_manufacturer(self, manufacturers: List[str],
+                           table_alias: Optional[str] = None) -> "SchemaAwareQueryBuilder":
+        """
+        Add WHERE EXISTS subquery to filter by manufacturer using devices table.
+
+        Uses devices.manufacturer_d_name since master_events.manufacturer_clean
+        is NULL for all records.
+
+        Args:
+            manufacturers: List of manufacturer names to filter by
+            table_alias: Optional table alias for main query (default: builder's alias)
+        """
+        if not manufacturers:
+            return self
+
+        alias = table_alias or self._table_alias
+        col = f"{alias}.mdr_report_key" if alias else "mdr_report_key"
+
+        placeholders = ", ".join(["?" for _ in manufacturers])
+        sql = f"""
+            EXISTS (
+                SELECT 1 FROM devices d
+                WHERE d.mdr_report_key = {col}
+                AND d.manufacturer_d_name IN ({placeholders})
+            )
+        """
+        self._condition_strings.append(sql)
+        self._params.extend(manufacturers)
+
+        return self
+
+    def where_manufacturer_like(self, search_text: str,
+                                table_alias: Optional[str] = None) -> "SchemaAwareQueryBuilder":
+        """
+        Add WHERE EXISTS subquery to search manufacturer names using LIKE.
+
+        Uses devices.manufacturer_d_name since master_events.manufacturer_clean
+        is NULL for all records.
+
+        Args:
+            search_text: Text to search for in manufacturer names
+            table_alias: Optional table alias for main query (default: builder's alias)
+        """
+        if not search_text:
+            return self
+
+        alias = table_alias or self._table_alias
+        col = f"{alias}.mdr_report_key" if alias else "mdr_report_key"
+
+        sql = f"""
+            EXISTS (
+                SELECT 1 FROM devices d
+                WHERE d.mdr_report_key = {col}
+                AND LOWER(d.manufacturer_d_name) LIKE ?
+            )
+        """
+        self._condition_strings.append(sql)
+        self._params.append(f"%{search_text.lower()}%")
+
+        return self
+
     # -------------------------------------------------------------------------
     # GROUP BY, HAVING, ORDER BY, LIMIT
     # -------------------------------------------------------------------------
@@ -494,7 +555,7 @@ def build_event_stats_query(
 
     # Add filters
     if manufacturers:
-        builder.where_in("manufacturer_clean", manufacturers)
+        builder.where_manufacturer(manufacturers)
     if product_codes:
         builder.where_in("product_code", product_codes)
     if event_types:
@@ -533,7 +594,7 @@ def build_events_list_query(
 
     # Add filters
     if manufacturers:
-        builder.where_in("manufacturer_clean", manufacturers)
+        builder.where_manufacturer(manufacturers)
     if product_codes:
         builder.where_in("product_code", product_codes)
     if event_types:
@@ -541,7 +602,7 @@ def build_events_list_query(
     if date_from or date_to:
         builder.where_date_range("date_received", date_from, date_to)
     if search_text:
-        builder.where_like("manufacturer_clean", f"%{search_text}%")
+        builder.where_manufacturer_like(search_text)
 
     # Add ordering and pagination
     builder.order_by("date_received", desc=True)

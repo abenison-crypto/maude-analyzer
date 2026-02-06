@@ -54,7 +54,7 @@ class QueryService:
 
         # Add filters
         if manufacturers:
-            builder.where_in("manufacturer_clean", manufacturers)
+            builder.where_manufacturer(manufacturers)
         if product_codes:
             builder.where_in("product_code", product_codes)
         if event_types:
@@ -388,7 +388,7 @@ class QueryService:
 
         # Add filters
         if manufacturers:
-            builder.where_in("manufacturer_clean", manufacturers)
+            builder.where_manufacturer(manufacturers)
         if product_codes:
             builder.where_in("product_code", product_codes)
         if event_types:
