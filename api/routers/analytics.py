@@ -69,7 +69,7 @@ async def get_trends(
         device_filters = DeviceFilters(
             brand_names=brand_names.split(",") if brand_names else None,
             generic_names=generic_names.split(",") if generic_names else None,
-            manufacturer_d_names=device_manufacturers.split(",") if device_manufacturers else None,
+            device_manufacturers=device_manufacturers.split(",") if device_manufacturers else None,
             model_numbers=model_numbers.split(",") if model_numbers else None,
             implant_flag=implant_flag if implant_flag in ('Y', 'N') else None,
             device_product_codes=device_product_codes.split(",") if device_product_codes else None,
