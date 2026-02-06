@@ -9,9 +9,26 @@ export function useTrends(
   const { filters } = useAdvancedFilters()
 
   return useQuery({
-    queryKey: ['trends', filters.manufacturers, filters.productCodes, filters.eventTypes, filters.dateFrom, filters.dateTo, groupBy, dateField],
+    queryKey: [
+      'trends',
+      filters.manufacturers,
+      filters.productCodes,
+      filters.eventTypes,
+      filters.dateFrom,
+      filters.dateTo,
+      groupBy,
+      dateField,
+      // Device filters for cache invalidation
+      filters.brandNames,
+      filters.genericNames,
+      filters.deviceManufacturers,
+      filters.modelNumbers,
+      filters.implantFlag,
+      filters.deviceProductCodes,
+    ],
     queryFn: () =>
       api.getTrends({
+        // Core filters
         manufacturers: filters.manufacturers.length ? filters.manufacturers : undefined,
         productCodes: filters.productCodes.length ? filters.productCodes : undefined,
         eventTypes: filters.eventTypes.length ? filters.eventTypes : undefined,
@@ -19,6 +36,13 @@ export function useTrends(
         dateTo: filters.dateTo || undefined,
         groupBy,
         dateField,
+        // Device filters
+        brandNames: filters.brandNames.length ? filters.brandNames : undefined,
+        genericNames: filters.genericNames.length ? filters.genericNames : undefined,
+        deviceManufacturers: filters.deviceManufacturers.length ? filters.deviceManufacturers : undefined,
+        modelNumbers: filters.modelNumbers.length ? filters.modelNumbers : undefined,
+        implantFlag: filters.implantFlag || undefined,
+        deviceProductCodes: filters.deviceProductCodes.length ? filters.deviceProductCodes : undefined,
       }),
   })
 }

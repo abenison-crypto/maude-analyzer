@@ -31,6 +31,13 @@ async def get_trends(
         "date_received",
         description="Date field to use: date_received (when FDA got report) or date_of_event (when event occurred)"
     ),
+    # Device filters
+    brand_names: Optional[str] = Query(None, description="Comma-separated device brand names"),
+    generic_names: Optional[str] = Query(None, description="Comma-separated device generic names"),
+    device_manufacturers: Optional[str] = Query(None, description="Comma-separated device manufacturer names"),
+    model_numbers: Optional[str] = Query(None, description="Comma-separated device model numbers"),
+    implant_flag: Optional[str] = Query(None, description="Implant flag (Y/N)"),
+    device_product_codes: Optional[str] = Query(None, description="Comma-separated device product codes"),
 ):
     """Get event trends over time.
 
@@ -39,6 +46,8 @@ async def get_trends(
     - date_of_event: When the event actually occurred. Better for understanding actual event timing,
       but note that this field may be NULL or inaccurate for some reports.
     """
+    from api.services.filters import DeviceFilters
+
     if group_by not in ("day", "month", "year"):
         raise HTTPException(status_code=400, detail="group_by must be day, month, or year")
 
@@ -54,6 +63,18 @@ async def get_trends(
     code_list = product_codes.split(",") if product_codes else None
     type_list = event_types.split(",") if event_types else None
 
+    # Build device filters if any are provided
+    device_filters = None
+    if any([brand_names, generic_names, device_manufacturers, model_numbers, implant_flag, device_product_codes]):
+        device_filters = DeviceFilters(
+            brand_names=brand_names.split(",") if brand_names else None,
+            generic_names=generic_names.split(",") if generic_names else None,
+            manufacturer_d_names=device_manufacturers.split(",") if device_manufacturers else None,
+            model_numbers=model_numbers.split(",") if model_numbers else None,
+            implant_flag=implant_flag if implant_flag in ('Y', 'N') else None,
+            device_product_codes=device_product_codes.split(",") if device_product_codes else None,
+        )
+
     return query_service.get_trends(
         manufacturers=mfr_list,
         product_codes=code_list,
@@ -62,6 +83,7 @@ async def get_trends(
         date_to=date_to,
         group_by=group_by,
         date_field=date_field,
+        device_filters=device_filters,
     )
 
 
@@ -107,16 +129,17 @@ async def detect_signals(
     """Detect potential safety signals based on event patterns.
 
     Identifies manufacturers/products with unusual increases in adverse events.
-    Uses available data with manufacturer information (data with manufacturer_clean populated).
+    Uses devices.manufacturer_d_name which has 99.45% coverage.
     """
     db = get_db()
 
-    # Find date range where manufacturer_clean data is substantially available
+    # Find date range from devices with manufacturer data
     date_range_query = """
-        SELECT MIN(date_received), MAX(date_received)
-        FROM master_events
-        WHERE manufacturer_clean IS NOT NULL
-        AND date_received >= DATE '2010-01-01'
+        SELECT MIN(m.date_received), MAX(m.date_received)
+        FROM master_events m
+        JOIN devices d ON d.mdr_report_key = m.mdr_report_key
+        WHERE d.manufacturer_d_name IS NOT NULL
+        AND m.date_received >= DATE '2010-01-01'
     """
     date_result = db.fetch_all(date_range_query)
     if not date_result or not date_result[0][0]:
@@ -130,20 +153,20 @@ async def detect_signals(
 
     # Build base filter using the reference date
     start_date = f"DATE '{reference_date}' - INTERVAL '{lookback_months}' MONTH"
-    conditions = [f"date_received >= {start_date}"]
-    conditions.append(f"date_received <= DATE '{reference_date}'")
+    conditions = [f"m.date_received >= {start_date}"]
+    conditions.append(f"m.date_received <= DATE '{reference_date}'")
     params = []
 
     if manufacturers:
         mfr_list = manufacturers.split(",")
         placeholders = ", ".join(["?" for _ in mfr_list])
-        conditions.append(f"manufacturer_clean IN ({placeholders})")
+        conditions.append(f"d.manufacturer_d_name IN ({placeholders})")
         params.extend(mfr_list)
 
     if product_codes:
         code_list = product_codes.split(",")
         placeholders = ", ".join(["?" for _ in code_list])
-        conditions.append(f"product_code IN ({placeholders})")
+        conditions.append(f"m.product_code IN ({placeholders})")
         params.extend(code_list)
 
     if event_types:
@@ -151,93 +174,81 @@ async def detect_signals(
         type_list = event_types.split(",")
         db_types = [EVENT_TYPE_FILTER_MAPPING.get(t, t) for t in type_list]
         placeholders = ", ".join(["?" for _ in db_types])
-        conditions.append(f"event_type IN ({placeholders})")
+        conditions.append(f"m.event_type IN ({placeholders})")
         params.extend(db_types)
 
-    # Device filters using EXISTS subquery
-    device_conditions = []
-    device_params = []
-
+    # Additional device filters (already joined to devices table)
     if brand_names:
         brand_list = brand_names.split(",")
         placeholders = ", ".join(["?" for _ in brand_list])
-        device_conditions.append(f"d.brand_name IN ({placeholders})")
-        device_params.extend(brand_list)
+        conditions.append(f"d.brand_name IN ({placeholders})")
+        params.extend(brand_list)
 
     if generic_names:
         generic_list = generic_names.split(",")
         generic_conds = []
         for name in generic_list:
             generic_conds.append("d.generic_name ILIKE ?")
-            device_params.append(f"%{name}%")
-        device_conditions.append(f"({' OR '.join(generic_conds)})")
+            params.append(f"%{name}%")
+        conditions.append(f"({' OR '.join(generic_conds)})")
 
     if device_manufacturers:
         dm_list = device_manufacturers.split(",")
         placeholders = ", ".join(["?" for _ in dm_list])
-        device_conditions.append(f"d.manufacturer_d_name IN ({placeholders})")
-        device_params.extend(dm_list)
+        conditions.append(f"d.manufacturer_d_name IN ({placeholders})")
+        params.extend(dm_list)
 
     if model_numbers:
         model_list = model_numbers.split(",")
         placeholders = ", ".join(["?" for _ in model_list])
-        device_conditions.append(f"d.model_number IN ({placeholders})")
-        device_params.extend(model_list)
+        conditions.append(f"d.model_number IN ({placeholders})")
+        params.extend(model_list)
 
     if implant_flag in ('Y', 'N'):
-        device_conditions.append("d.implant_flag = ?")
-        device_params.append(implant_flag)
+        conditions.append("d.implant_flag = ?")
+        params.append(implant_flag)
 
     if device_product_codes:
         dpc_list = device_product_codes.split(",")
         placeholders = ", ".join(["?" for _ in dpc_list])
-        device_conditions.append(f"d.device_report_product_code IN ({placeholders})")
-        device_params.extend(dpc_list)
-
-    if device_conditions:
-        device_where = " AND ".join(device_conditions)
-        conditions.append(f"""
-            EXISTS (
-                SELECT 1 FROM devices d
-                WHERE d.mdr_report_key = master_events.mdr_report_key
-                AND {device_where}
-            )
-        """)
-        params.extend(device_params)
+        conditions.append(f"d.device_report_product_code IN ({placeholders})")
+        params.extend(dpc_list)
 
     where_clause = " AND ".join(conditions)
 
     # Get monthly trends by manufacturer with latest month calculation
+    # Uses devices.manufacturer_d_name which has 99.45% coverage
     query = f"""
         WITH monthly_counts AS (
             SELECT
-                manufacturer_clean,
-                DATE_TRUNC('month', date_received) as month,
-                COUNT(*) as event_count,
-                COUNT(CASE WHEN event_type = 'D' THEN 1 END) as death_count
-            FROM master_events
+                d.manufacturer_d_name,
+                DATE_TRUNC('month', m.date_received) as month,
+                COUNT(DISTINCT m.mdr_report_key) as event_count,
+                COUNT(DISTINCT CASE WHEN m.event_type = 'D' THEN m.mdr_report_key END) as death_count
+            FROM master_events m
+            JOIN devices d ON d.mdr_report_key = m.mdr_report_key
             WHERE {where_clause}
-            AND manufacturer_clean IS NOT NULL
-            GROUP BY manufacturer_clean, DATE_TRUNC('month', date_received)
+            AND d.manufacturer_d_name IS NOT NULL
+            GROUP BY d.manufacturer_d_name, DATE_TRUNC('month', m.date_received)
         ),
         latest_months AS (
             SELECT
-                manufacturer_clean,
+                manufacturer_d_name,
                 MAX(month) as max_month
             FROM monthly_counts
-            GROUP BY manufacturer_clean
+            GROUP BY manufacturer_d_name
         ),
         latest_counts AS (
             SELECT
-                mc.manufacturer_clean,
+                mc.manufacturer_d_name,
                 mc.event_count as latest_month_events
             FROM monthly_counts mc
-            JOIN latest_months lm ON mc.manufacturer_clean = lm.manufacturer_clean
+            JOIN latest_months lm ON mc.manufacturer_d_name = lm.manufacturer_d_name
                 AND mc.month = lm.max_month
         ),
         manufacturer_stats AS (
             SELECT
-                mc.manufacturer_clean,
+                mc.manufacturer_d_name,
                 AVG(mc.event_count) as avg_events,
                 STDDEV_SAMP(mc.event_count) as std_events,
                 SUM(mc.event_count) as total_events,
@@ -245,12 +256,12 @@ async def detect_signals(
                 MAX(mc.event_count) as max_month_events,
                 lc.latest_month_events
             FROM monthly_counts mc
-            JOIN latest_counts lc ON mc.manufacturer_clean = lc.manufacturer_clean
-            GROUP BY mc.manufacturer_clean, lc.latest_month_events
+            JOIN latest_counts lc ON mc.manufacturer_d_name = lc.manufacturer_d_name
+            GROUP BY mc.manufacturer_d_name, lc.latest_month_events
             HAVING SUM(mc.event_count) >= ?
         )
         SELECT
-            manufacturer_clean,
+            manufacturer_d_name,
             ROUND(avg_events, 1) as avg_monthly,
             ROUND(COALESCE(std_events, 0), 1) as std_monthly,
             total_events,

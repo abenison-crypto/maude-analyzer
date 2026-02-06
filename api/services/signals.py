@@ -25,8 +25,10 @@ class SignalDetectionService:
     """Service for detecting safety signals using multiple methods."""
 
     # Column mappings for drill-down levels
+    # Uses devices.manufacturer_d_name which has 99.45% coverage
+    # (master_events.manufacturer_clean is NULL for all records)
     LEVEL_COLUMNS = {
-        DrillDownLevel.MANUFACTURER: "m.manufacturer_clean",
+        DrillDownLevel.MANUFACTURER: "d.manufacturer_d_name",
         DrillDownLevel.BRAND: "d.brand_name",
         DrillDownLevel.GENERIC: "d.generic_name",
         DrillDownLevel.MODEL: "d.model_number",
@@ -34,7 +36,7 @@ class SignalDetectionService:
 
     # Parent filter columns
     PARENT_COLUMNS = {
-        DrillDownLevel.BRAND: "m.manufacturer_clean",
+        DrillDownLevel.BRAND: "d.manufacturer_d_name",
         DrillDownLevel.GENERIC: "d.brand_name",
         DrillDownLevel.MODEL: "d.generic_name",
     }
@@ -139,10 +141,11 @@ class SignalDetectionService:
 
     def _resolve_time_range(self, config: TimeComparisonConfig, date_col: str = "date_received") -> TimeInfo:
         """Resolve time configuration to concrete dates."""
-        # Get max date from database
+        # Get max date from database using devices.manufacturer_d_name
         result = self.db.fetch_one(f"""
-            SELECT MAX({date_col}) FROM master_events
-            WHERE manufacturer_clean IS NOT NULL AND {date_col} IS NOT NULL
+            SELECT MAX(m.{date_col}) FROM master_events m
+            JOIN devices d ON d.mdr_report_key = m.mdr_report_key
+            WHERE d.manufacturer_d_name IS NOT NULL AND m.{date_col} IS NOT NULL
         """)
         max_date = result[0] if result and result[0] else date.today()
 
@@ -260,7 +263,8 @@ class SignalDetectionService:
     def _get_entity_data(self, request: SignalRequest, time_info: TimeInfo) -> list[dict]:
         """Get aggregated data for entities at the specified level."""
         level_col = self.LEVEL_COLUMNS[request.level]
-        needs_device_join = request.level != DrillDownLevel.MANUFACTURER
+        # All levels now need device join since manufacturer comes from devices table
+        needs_device_join = True
         date_col = self._get_date_column(request)
 
         # Get grouping expression (handles entity groups if active)
@@ -316,99 +320,53 @@ class SignalDetectionService:
             else "mc.month = es.max_month"
         )
 
-        if needs_device_join:
-            query = f"""
-                WITH monthly_counts AS (
-                    SELECT
-                        {entity_select} as entity,
-                        DATE_TRUNC('month', m.{date_col}) as month,
-                        COUNT(DISTINCT m.mdr_report_key) as event_count,
-                        COUNT(DISTINCT CASE WHEN m.event_type = 'D' THEN m.mdr_report_key END) as death_count,
-                        COUNT(DISTINCT CASE WHEN m.event_type = 'IN' THEN m.mdr_report_key END) as injury_count,
-                        COUNT(DISTINCT CASE WHEN m.event_type = 'M' THEN m.mdr_report_key END) as malfunction_count
-                    FROM master_events m
-                    JOIN devices d ON d.mdr_report_key = m.mdr_report_key
-                    WHERE {where_clause}
-                    GROUP BY {entity_group}, DATE_TRUNC('month', m.{date_col})
-                ),
-                entity_stats AS (
-                    SELECT
-                        entity,
-                        SUM(event_count) as total_events,
-                        SUM(death_count) as deaths,
-                        SUM(injury_count) as injuries,
-                        SUM(malfunction_count) as malfunctions,
-                        AVG(event_count) as avg_monthly,
-                        STDDEV_SAMP(event_count) as std_monthly,
-                        MAX(month) as max_month
-                    FROM monthly_counts
-                    GROUP BY entity
-                    HAVING SUM(event_count) >= ?
-                ),
-                latest_counts AS (
-                    SELECT mc.entity, mc.event_count as latest_month_events
-                    FROM monthly_counts mc
-                    JOIN entity_stats es ON mc.entity = es.entity AND {comparison_month_condition}
-                )
+        # All queries now join with devices since manufacturer comes from devices table
+        query = f"""
+            WITH monthly_counts AS (
                 SELECT
-                    es.entity,
-                    es.total_events,
-                    es.deaths,
-                    es.injuries,
-                    es.malfunctions,
-                    ROUND(es.avg_monthly, 2) as avg_monthly,
-                    ROUND(COALESCE(es.std_monthly, 0), 2) as std_monthly,
-                    COALESCE(lc.latest_month_events, 0) as latest_month_events
-                FROM entity_stats es
-                LEFT JOIN latest_counts lc ON es.entity = lc.entity
-                ORDER BY es.total_events DESC
-            """
-        else:
-            query = f"""
-                WITH monthly_counts AS (
-                    SELECT
-                        {entity_select} as entity,
-                        DATE_TRUNC('month', m.{date_col}) as month,
-                        COUNT(DISTINCT m.mdr_report_key) as event_count,
-                        COUNT(DISTINCT CASE WHEN m.event_type = 'D' THEN m.mdr_report_key END) as death_count,
-                        COUNT(DISTINCT CASE WHEN m.event_type = 'IN' THEN m.mdr_report_key END) as injury_count,
-                        COUNT(DISTINCT CASE WHEN m.event_type = 'M' THEN m.mdr_report_key END) as malfunction_count
-                    FROM master_events m
-                    WHERE {where_clause}
-                    GROUP BY {entity_group}, DATE_TRUNC('month', m.{date_col})
-                ),
-                entity_stats AS (
-                    SELECT
-                        entity,
-                        SUM(event_count) as total_events,
-                        SUM(death_count) as deaths,
-                        SUM(injury_count) as injuries,
-                        SUM(malfunction_count) as malfunctions,
-                        AVG(event_count) as avg_monthly,
-                        STDDEV_SAMP(event_count) as std_monthly,
-                        MAX(month) as max_month
-                    FROM monthly_counts
-                    GROUP BY entity
-                    HAVING SUM(event_count) >= ?
-                ),
-                latest_counts AS (
-                    SELECT mc.entity, mc.event_count as latest_month_events
-                    FROM monthly_counts mc
-                    JOIN entity_stats es ON mc.entity = es.entity AND {comparison_month_condition}
-                )
+                    {entity_select} as entity,
+                    DATE_TRUNC('month', m.{date_col}) as month,
+                    COUNT(DISTINCT m.mdr_report_key) as event_count,
+                    COUNT(DISTINCT CASE WHEN m.event_type = 'D' THEN m.mdr_report_key END) as death_count,
+                    COUNT(DISTINCT CASE WHEN m.event_type = 'IN' THEN m.mdr_report_key END) as injury_count,
+                    COUNT(DISTINCT CASE WHEN m.event_type = 'M' THEN m.mdr_report_key END) as malfunction_count
+                FROM master_events m
+                JOIN devices d ON d.mdr_report_key = m.mdr_report_key
+                WHERE {where_clause}
+                GROUP BY {entity_group}, DATE_TRUNC('month', m.{date_col})
+            ),
+            entity_stats AS (
                 SELECT
-                    es.entity,
-                    es.total_events,
-                    es.deaths,
-                    es.injuries,
-                    es.malfunctions,
-                    ROUND(es.avg_monthly, 2) as avg_monthly,
-                    ROUND(COALESCE(es.std_monthly, 0), 2) as std_monthly,
-                    COALESCE(lc.latest_month_events, 0) as latest_month_events
-                FROM entity_stats es
-                LEFT JOIN latest_counts lc ON es.entity = lc.entity
-                ORDER BY es.total_events DESC
-            """
+                    entity,
+                    SUM(event_count) as total_events,
+                    SUM(death_count) as deaths,
+                    SUM(injury_count) as injuries,
+                    SUM(malfunction_count) as malfunctions,
+                    AVG(event_count) as avg_monthly,
+                    STDDEV_SAMP(event_count) as std_monthly,
+                    MAX(month) as max_month
+                FROM monthly_counts
+                GROUP BY entity
+                HAVING SUM(event_count) >= ?
+            ),
+            latest_counts AS (
+                SELECT mc.entity, mc.event_count as latest_month_events
+                FROM monthly_counts mc
+                JOIN entity_stats es ON mc.entity = es.entity AND {comparison_month_condition}
+            )
+            SELECT
+                es.entity,
+                es.total_events,
+                es.deaths,
+                es.injuries,
+                es.malfunctions,
+                ROUND(es.avg_monthly, 2) as avg_monthly,
+                ROUND(COALESCE(es.std_monthly, 0), 2) as std_monthly,
+                COALESCE(lc.latest_month_events, 0) as latest_month_events
+            FROM entity_stats es
+            LEFT JOIN latest_counts lc ON es.entity = lc.entity
+            ORDER BY es.total_events DESC
+        """
 
         params.append(request.min_events)
         results = self.db.fetch_all(query, params)
@@ -438,7 +396,6 @@ class SignalDetectionService:
             return
 
         level_col = self.LEVEL_COLUMNS[request.level]
-        needs_device_join = request.level != DrillDownLevel.MANUFACTURER
         date_col = self._get_date_column(request)
 
         entity_names = [e["entity"] for e in entities]
@@ -447,23 +404,15 @@ class SignalDetectionService:
 
         placeholders = ", ".join(["?" for _ in entity_names])
 
-        if needs_device_join:
-            query = f"""
-                SELECT {level_col} as entity, COUNT(DISTINCT m.mdr_report_key) as events
-                FROM master_events m
-                JOIN devices d ON d.mdr_report_key = m.mdr_report_key
-                WHERE m.{date_col} >= ? AND m.{date_col} <= ?
-                AND {level_col} IN ({placeholders})
-                GROUP BY {level_col}
-            """
-        else:
-            query = f"""
-                SELECT m.manufacturer_clean as entity, COUNT(DISTINCT m.mdr_report_key) as events
-                FROM master_events m
-                WHERE m.{date_col} >= ? AND m.{date_col} <= ?
-                AND m.manufacturer_clean IN ({placeholders})
-                GROUP BY m.manufacturer_clean
-            """
+        # All queries now join with devices since manufacturer comes from devices table
+        query = f"""
+            SELECT {level_col} as entity, COUNT(DISTINCT m.mdr_report_key) as events
+            FROM master_events m
+            JOIN devices d ON d.mdr_report_key = m.mdr_report_key
+            WHERE m.{date_col} >= ? AND m.{date_col} <= ?
+            AND {level_col} IN ({placeholders})
+            GROUP BY {level_col}
+        """
 
         params = [time_info.comparison_start.isoformat(), time_info.comparison_end.isoformat()]
         params.extend(entity_names)
@@ -808,7 +757,6 @@ class SignalDetectionService:
         """Get 2x2 table counts for disproportionality methods."""
         entity = entity_data["entity"]
         level_col = self.LEVEL_COLUMNS[request.level]
-        needs_device_join = request.level != DrillDownLevel.MANUFACTURER
         date_col = self._get_date_column(request)
 
         # Build base query conditions
@@ -823,29 +771,18 @@ class SignalDetectionService:
 
         where_clause = " AND ".join(conditions)
 
-        if needs_device_join:
-            query = f"""
-                SELECT
-                    CASE WHEN {level_col} = ? THEN 'entity' ELSE 'other' END as group_type,
-                    CASE WHEN m.event_type = ? THEN 'target' ELSE 'other' END as event_type,
-                    COUNT(DISTINCT m.mdr_report_key) as count
-                FROM master_events m
-                JOIN devices d ON d.mdr_report_key = m.mdr_report_key
-                WHERE {where_clause}
-                AND {level_col} IS NOT NULL
-                GROUP BY 1, 2
-            """
-        else:
-            query = f"""
-                SELECT
-                    CASE WHEN m.manufacturer_clean = ? THEN 'entity' ELSE 'other' END as group_type,
-                    CASE WHEN m.event_type = ? THEN 'target' ELSE 'other' END as event_type,
-                    COUNT(DISTINCT m.mdr_report_key) as count
-                FROM master_events m
-                WHERE {where_clause}
-                AND m.manufacturer_clean IS NOT NULL
-                GROUP BY 1, 2
-            """
+        # All queries now join with devices since manufacturer comes from devices table
+        query = f"""
+            SELECT
+                CASE WHEN {level_col} = ? THEN 'entity' ELSE 'other' END as group_type,
+                CASE WHEN m.event_type = ? THEN 'target' ELSE 'other' END as event_type,
+                COUNT(DISTINCT m.mdr_report_key) as count
+            FROM master_events m
+            JOIN devices d ON d.mdr_report_key = m.mdr_report_key
+            WHERE {where_clause}
+            AND {level_col} IS NOT NULL
+            GROUP BY 1, 2
+        """
 
         params = [entity, target_type] + params
 
@@ -869,28 +806,18 @@ class SignalDetectionService:
     def _get_monthly_series(self, entity: str, request: SignalRequest, time_info: TimeInfo) -> list[dict]:
         """Get monthly event counts for an entity."""
         level_col = self.LEVEL_COLUMNS[request.level]
-        needs_device_join = request.level != DrillDownLevel.MANUFACTURER
         date_col = self._get_date_column(request)
 
-        if needs_device_join:
-            query = f"""
-                SELECT DATE_TRUNC('month', m.{date_col}) as month, COUNT(DISTINCT m.mdr_report_key) as count
-                FROM master_events m
-                JOIN devices d ON d.mdr_report_key = m.mdr_report_key
-                WHERE m.{date_col} >= ? AND m.{date_col} <= ?
-                AND {level_col} = ?
-                GROUP BY 1
-                ORDER BY 1
-            """
-        else:
-            query = f"""
-                SELECT DATE_TRUNC('month', m.{date_col}) as month, COUNT(DISTINCT m.mdr_report_key) as count
-                FROM master_events m
-                WHERE m.{date_col} >= ? AND m.{date_col} <= ?
-                AND m.manufacturer_clean = ?
-                GROUP BY 1
-                ORDER BY 1
-            """
+        # All queries now join with devices since manufacturer comes from devices table
+        query = f"""
+            SELECT DATE_TRUNC('month', m.{date_col}) as month, COUNT(DISTINCT m.mdr_report_key) as count
+            FROM master_events m
+            JOIN devices d ON d.mdr_report_key = m.mdr_report_key
+            WHERE m.{date_col} >= ? AND m.{date_col} <= ?
+            AND {level_col} = ?
+            GROUP BY 1
+            ORDER BY 1
+        """
 
         params = [time_info.analysis_start.isoformat(), time_info.analysis_end.isoformat(), entity]
         results = self.db.fetch_all(query, params)

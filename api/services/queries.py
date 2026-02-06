@@ -264,23 +264,25 @@ class QueryService:
         Returns:
             List of manufacturer names with counts.
         """
+        # Query devices.manufacturer_d_name which has 99.45% coverage
+        # (master_events.manufacturer_clean is NULL for all records)
         if search:
             query = """
-                SELECT manufacturer_clean, COUNT(*) as count
-                FROM master_events
-                WHERE manufacturer_clean IS NOT NULL
-                AND LOWER(manufacturer_clean) LIKE ?
-                GROUP BY manufacturer_clean
+                SELECT d.manufacturer_d_name, COUNT(DISTINCT d.mdr_report_key) as count
+                FROM devices d
+                WHERE d.manufacturer_d_name IS NOT NULL
+                AND LOWER(d.manufacturer_d_name) LIKE ?
+                GROUP BY d.manufacturer_d_name
                 ORDER BY count DESC
                 LIMIT ?
             """
             params = [f"%{search.lower()}%", limit]
         else:
             query = """
-                SELECT manufacturer_clean, COUNT(*) as count
-                FROM master_events
-                WHERE manufacturer_clean IS NOT NULL
-                GROUP BY manufacturer_clean
+                SELECT d.manufacturer_d_name, COUNT(DISTINCT d.mdr_report_key) as count
+                FROM devices d
+                WHERE d.manufacturer_d_name IS NOT NULL
+                GROUP BY d.manufacturer_d_name
                 ORDER BY count DESC
                 LIMIT ?
             """
@@ -336,6 +338,7 @@ class QueryService:
         date_to: Optional[date] = None,
         group_by: str = "month",
         date_field: str = "date_received",
+        device_filters: Optional[DeviceFilters] = None,
     ) -> list[dict]:
         """Get event trends over time.
 
@@ -344,6 +347,7 @@ class QueryService:
             date_field: Which date field to use for grouping. Options:
                 - "date_received": When FDA received the report (default)
                 - "date_of_event": When the event actually occurred
+            device_filters: Optional device filters to apply.
 
         Returns:
             List of time periods with counts.
@@ -391,6 +395,15 @@ class QueryService:
             builder.where_event_types(event_types)
         if date_from or date_to:
             builder.where_date_range(date_field, date_from, date_to)
+
+        # Handle device filters via extended filter clause
+        if device_filters:
+            where_clause, params = build_extended_filter_clause(
+                device_filters=device_filters,
+                table_alias="m",
+            )
+            if where_clause != "1=1":
+                builder.where(where_clause, params)
 
         # Ensure date field is not null
         builder.where_not_null(date_field)

@@ -277,6 +277,7 @@ export const api = {
     } = {}
   ): Promise<TrendData[]> => {
     const params = new URLSearchParams()
+    // Core filters
     if (filters.manufacturers?.length) params.set('manufacturers', filters.manufacturers.join(','))
     if (filters.productCodes?.length) params.set('product_codes', filters.productCodes.join(','))
     if (filters.eventTypes?.length) params.set('event_types', filters.eventTypes.join(','))
@@ -284,6 +285,13 @@ export const api = {
     if (filters.dateTo) params.set('date_to', filters.dateTo)
     if (filters.groupBy) params.set('group_by', filters.groupBy)
     if (filters.dateField) params.set('date_field', filters.dateField)
+    // Device filters
+    if (filters.brandNames?.length) params.set('brand_names', filters.brandNames.join(','))
+    if (filters.genericNames?.length) params.set('generic_names', filters.genericNames.join(','))
+    if (filters.deviceManufacturers?.length) params.set('device_manufacturers', filters.deviceManufacturers.join(','))
+    if (filters.modelNumbers?.length) params.set('model_numbers', filters.modelNumbers.join(','))
+    if (filters.implantFlag) params.set('implant_flag', filters.implantFlag)
+    if (filters.deviceProductCodes?.length) params.set('device_product_codes', filters.deviceProductCodes.join(','))
     return fetchJSON(`${API_BASE}/analytics/trends?${params}`)
   },
 
