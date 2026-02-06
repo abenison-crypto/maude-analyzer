@@ -15,12 +15,13 @@ async def get_database_status():
     db = get_db()
 
     # Get table counts
+    # Note: manufacturer coverage is from devices table where manufacturer data lives
     counts_query = """
         SELECT
             (SELECT COUNT(*) FROM master_events) as total_events,
             (SELECT COUNT(*) FROM devices) as total_devices,
             (SELECT COUNT(*) FROM patients) as total_patients,
-            (SELECT COUNT(manufacturer_clean) * 100.0 / COUNT(*) FROM master_events) as mfr_coverage
+            (SELECT COUNT(manufacturer_d_name) * 100.0 / NULLIF(COUNT(*), 0) FROM devices) as mfr_coverage
     """
     counts = db.fetch_one(counts_query)
 
