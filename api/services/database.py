@@ -59,15 +59,33 @@ class DatabaseService:
             self._connection.close()
             self._connection = None
 
+    def reconnect(self) -> duckdb.DuckDBPyConnection:
+        """Close and reopen the database connection."""
+        self.close()
+        return self.connect()
+
 
 # Global database instance
 _db_service: Optional[DatabaseService] = None
 
 
-@lru_cache
 def get_db() -> DatabaseService:
     """Get global database service instance."""
     global _db_service
     if _db_service is None:
         _db_service = DatabaseService()
     return _db_service
+
+
+def close_db() -> None:
+    """Close the global database connection."""
+    global _db_service
+    if _db_service is not None:
+        _db_service.close()
+
+
+def reconnect_db() -> None:
+    """Reconnect the global database."""
+    global _db_service
+    if _db_service is not None:
+        _db_service.reconnect()

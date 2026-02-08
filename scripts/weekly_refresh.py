@@ -185,34 +185,49 @@ def load_data_files(
     db_path: Path,
     filter_codes: Optional[List[str]],
     logger,
+    add_only: bool = True,
 ) -> Dict[str, Any]:
     """
-    Load data files (ADD files and current year files).
+    Load data files (ADD files and optionally current year files).
 
     Args:
         data_dir: Directory containing data files.
         db_path: Path to database.
         filter_codes: Optional list of product codes to filter by (None = all).
         logger: Logger instance.
+        add_only: If True, only load ADD files (default). If False, load all files.
 
     Returns:
         Dictionary with load statistics.
     """
-    logger.info("\nLoading data files...")
+    if add_only:
+        logger.info("\nLoading ADD files only (use --full-refresh to load all)...")
+    else:
+        logger.info("\nLoading all data files (full refresh)...")
 
     loader = MAUDELoader(
         db_path=db_path,
         filter_product_codes=filter_codes,
     )
 
-    # File patterns to load (ADD files and current year files)
-    patterns = {
-        "master": ["mdrfoi*.txt", "mdrfoiAdd*.txt"],
-        "device": ["foidev*.txt", "foidevAdd*.txt"],
-        "patient": ["patient*.txt", "patientAdd*.txt"],
-        "text": ["foitext*.txt", "foitextAdd*.txt"],
-        "problem": ["foidevproblem*.txt"],
-    }
+    # File patterns to load
+    if add_only:
+        # Only load ADD files for weekly incremental updates
+        patterns = {
+            "master": ["mdrfoiAdd.txt"],
+            "device": ["foidevAdd.txt"],
+            "patient": ["patientAdd.txt"],
+            "text": ["foitextAdd.txt"],
+        }
+    else:
+        # Full refresh - load all files including historical
+        patterns = {
+            "master": ["mdrfoi*.txt", "mdrfoiAdd*.txt"],
+            "device": ["foidev*.txt", "foidevAdd*.txt"],
+            "patient": ["patient*.txt", "patientAdd*.txt"],
+            "text": ["foitext*.txt", "foitextAdd*.txt"],
+            "problem": ["foidevproblem*.txt"],
+        }
 
     # Exclude CHANGE files (handled separately)
     exclude_patterns = ["*Change*"]
@@ -540,8 +555,24 @@ def main():
         default="INFO",
         help="Logging level",
     )
+    parser.add_argument(
+        "--add-only",
+        action="store_true",
+        default=True,
+        help="Only load ADD files (default: True). Use --full-refresh to load all files.",
+    )
+    parser.add_argument(
+        "--full-refresh",
+        action="store_true",
+        default=False,
+        help="Load all files including historical (use for monthly rebuilds)",
+    )
 
     args = parser.parse_args()
+
+    # --full-refresh overrides --add-only
+    if args.full_refresh:
+        args.add_only = False
 
     # Setup logging
     setup_logging(log_level=args.log_level)
@@ -620,6 +651,7 @@ def main():
             args.db,
             filter_codes=filter_codes,
             logger=logger,
+            add_only=args.add_only,
         )
 
         # Step 4: Process CHANGE files (updates to existing records)

@@ -261,10 +261,10 @@ def check_data_freshness(conn) -> MetricResult:
     thresholds = DEFAULT_THRESHOLDS["data_freshness_days"]
 
     try:
-        # Get most recent date_received
+        # Get most recent date_added (when FDA published the record)
         latest = conn.execute("""
-            SELECT MAX(date_received) FROM master_events
-            WHERE date_received IS NOT NULL
+            SELECT MAX(date_added) FROM master_events
+            WHERE date_added IS NOT NULL
         """).fetchone()[0]
 
         if latest:
